@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import type { CreatedRoom } from "@support-room/shared";
 import { Check, Copy, Link2, Plus, Video } from "lucide-react";
 import { toast } from "sonner";
 
@@ -15,38 +16,42 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-
-const inviteLink = "supportroom.app/join/SR-8421";
+import { createSupportRoom, invitationUrl } from "@/lib/signaling/client";
 
 export function CreateRoomDialog() {
-  const [created, setCreated] = useState(false);
+  const [created, setCreated] = useState<CreatedRoom | null>(null);
+  const [reference, setReference] = useState("");
+  const [isCreating, setIsCreating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const inviteLink = created ? invitationUrl(created) : "";
 
-  function copyLink() {
-    void navigator.clipboard?.writeText(`https://${inviteLink}`);
-    toast.success("Invitation link copied");
+  async function copyLink() {
+    try {
+      await navigator.clipboard.writeText(inviteLink);
+      toast.success("Invitation link copied");
+    } catch { toast.error("Could not copy the link. Select and copy it manually."); }
   }
 
   return (
-    <Dialog onOpenChange={(open) => !open && setCreated(false)}>
+    <Dialog onOpenChange={(open) => { if (!open) { setCreated(null); setError(null); } }}>
       <DialogTrigger render={<Button size="lg" className="h-10 px-4" />}><Plus />New room</DialogTrigger>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="min-w-0 grid-cols-[minmax(0,1fr)] sm:max-w-md [&>*]:min-w-0">
         {created ? (
           <>
             <DialogHeader>
               <span className="mb-1 grid size-10 place-items-center rounded-full bg-emerald-50 text-emerald-700"><Check className="size-5" /></span>
               <DialogTitle>Room is ready</DialogTitle>
-              <DialogDescription>Send this secure link to your customer. It expires when the session ends.</DialogDescription>
+              <DialogDescription>Send this link to your customer. It expires in 30 minutes or when you end the room.</DialogDescription>
             </DialogHeader>
-            <div className="flex items-center gap-2 rounded-lg border bg-muted/40 p-2 pl-3">
+            <div className="flex w-full min-w-0 items-center gap-2 overflow-hidden rounded-lg border bg-muted/40 p-2 pl-3">
               <Link2 className="size-4 shrink-0 text-muted-foreground" />
               <span className="min-w-0 flex-1 truncate text-sm">{inviteLink}</span>
-              <Button variant="outline" size="icon" onClick={copyLink} aria-label="Copy invitation link"><Copy /></Button>
+              <Button variant="outline" size="icon" className="shrink-0" onClick={copyLink} aria-label="Copy invitation link"><Copy /></Button>
             </div>
             <DialogFooter>
-              <Button className="w-full sm:w-auto" render={<Link href="/room/SR-8421" />}><Video />Open room</Button>
+              <Button className="w-full sm:w-auto" render={<Link href={`/room/${created.roomId}`} />}><Video />Open room</Button>
             </DialogFooter>
           </>
         ) : (
@@ -57,20 +62,17 @@ export function CreateRoomDialog() {
             </DialogHeader>
             <FieldGroup>
               <Field>
-                <FieldLabel htmlFor="customer-name">Customer name</FieldLabel>
-                <Input id="customer-name" placeholder="e.g. Jordan Taylor" />
-              </Field>
-              <Field>
                 <FieldLabel htmlFor="reference">Reference</FieldLabel>
-                <Input id="reference" placeholder="Order, ticket, or case number" />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="notes">Session note</FieldLabel>
-                <Textarea id="notes" placeholder="What will you help with?" className="min-h-20 resize-none" />
-                <FieldDescription>Only agents can see this note.</FieldDescription>
+                <Input id="reference" maxLength={120} value={reference} onChange={(event) => setReference(event.target.value)} placeholder="Order, ticket, or case number" />
               </Field>
             </FieldGroup>
-            <DialogFooter><Button onClick={() => setCreated(true)}><Plus />Create room</Button></DialogFooter>
+            {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+            <DialogFooter><Button disabled={isCreating} onClick={async () => {
+              setIsCreating(true); setError(null);
+              try { setCreated(await createSupportRoom(reference)); }
+              catch (roomError) { setError(roomError instanceof Error ? roomError.message : "Could not create the room."); }
+              finally { setIsCreating(false); }
+            }}><Plus />{isCreating ? "Creating…" : "Create room"}</Button></DialogFooter>
           </>
         )}
       </DialogContent>

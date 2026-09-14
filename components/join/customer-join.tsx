@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Camera, Check, Mic, ShieldCheck, UserRound, Video, VideoOff } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Camera, Check, Loader2, Mic, ShieldCheck, Video, VideoOff } from "lucide-react";
 
 import { Brand } from "@/components/layout/brand";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -11,11 +11,27 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import { Progress } from "@/components/ui/progress";
+import { useLocalMedia } from "@/hooks/use-local-media";
+import { useSignaling } from "@/hooks/use-signaling";
 
 export function CustomerJoin({ roomId }: { roomId: string }) {
-  const [camera, setCamera] = useState(true);
-  const [microphone, setMicrophone] = useState(true);
+  const media = useLocalMedia();
+  const videoRef = useRef<HTMLVideoElement>(null);
   const [waiting, setWaiting] = useState(false);
+  const [name, setName] = useState("");
+  const signaling = useSignaling({ roomId, role: "customer", name, enabled: waiting });
+  const admitted = signaling.room?.customerState === "admitted";
+  const isReady = media.status === "ready";
+  const failed = ["error", "closed", "disconnected", "declined"].includes(signaling.status);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.srcObject = media.stream;
+    if (media.stream) void video.play().catch(() => undefined);
+    return () => { video.srcObject = null; };
+  }, [media.stream]);
 
   return (
     <main className="app-surface min-h-screen bg-[#f7f8fa]">
@@ -24,20 +40,23 @@ export function CustomerJoin({ roomId }: { roomId: string }) {
         <section>
           <div className="mb-6"><p className="font-medium text-primary">Device preview</p><h1 className="mt-1.5 text-[1.75rem] font-semibold leading-tight">Get ready to join</h1><p className="mt-2 text-muted-foreground">Check how you look and sound before entering the room.</p></div>
           <div className="relative aspect-video overflow-hidden rounded-xl bg-[#202b3d] shadow-sm">
-            {camera ? <div className="absolute inset-0 grid place-items-center bg-[radial-gradient(circle_at_center,#34435b_0%,#202b3d_65%)]"><div className="grid size-20 place-items-center rounded-full bg-white/10 text-white"><UserRound className="size-9" /></div></div> : <div className="absolute inset-0 grid place-items-center text-slate-300"><div className="text-center"><VideoOff className="mx-auto size-8" /><p className="mt-3 text-sm">Camera is off</p></div></div>}
-            <div className="absolute bottom-3 left-3 flex items-center gap-2 rounded-md bg-black/45 px-2.5 py-1.5 text-xs text-white backdrop-blur"><span className="size-1.5 rounded-full bg-emerald-400" />Preview</div>
+            <video ref={videoRef} autoPlay muted playsInline className={`h-full w-full object-cover [transform:scaleX(-1)] ${!isReady || !media.isCameraEnabled ? "invisible" : ""}`} />
+            {(!isReady || !media.isCameraEnabled) && <div className="absolute inset-0 grid place-items-center p-5 text-slate-300"><div className="text-center">{media.status === "requesting" ? <Loader2 className="mx-auto size-8 animate-spin" /> : <VideoOff className="mx-auto size-8" />}<p className="mt-3 text-sm">{media.status === "requesting" ? "Allow access in your browser" : isReady ? "Camera is off" : "Preview your camera and microphone"}</p>{!isReady && media.status !== "requesting" && <Button className="mt-4" onClick={() => void media.startMedia()}><Camera />Start preview</Button>}</div></div>}
+            {isReady && <div className="absolute bottom-3 left-3 flex items-center gap-2 rounded-md bg-black/45 px-2.5 py-1.5 text-xs text-white backdrop-blur"><span className="size-1.5 rounded-full bg-emerald-400" />Only visible to you</div>}
           </div>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            <DeviceToggle icon={Camera} label="Camera" detail="FaceTime HD Camera" checked={camera} onCheckedChange={setCamera} />
-            <DeviceToggle icon={Mic} label="Microphone" detail="MacBook Microphone" checked={microphone} onCheckedChange={setMicrophone} />
+            <DeviceToggle icon={Camera} label="Camera" detail={media.stream?.getVideoTracks()[0]?.label || "Start preview to check"} checked={media.isCameraEnabled} disabled={!isReady} onCheckedChange={media.toggleCamera} />
+            <DeviceToggle icon={Mic} label="Microphone" detail={media.stream?.getAudioTracks()[0]?.label || "Start preview to check"} checked={media.isMicrophoneEnabled} disabled={!isReady} onCheckedChange={media.toggleMicrophone} />
           </div>
+          {isReady && <div className="mt-4 space-y-2"><p className="text-xs text-muted-foreground">{media.isMicrophoneEnabled ? "Speak to test your microphone" : "Microphone muted"}</p><Progress value={media.isMicrophoneEnabled ? media.audioLevel : 0} className="h-1.5" /><Button variant="ghost" size="sm" onClick={media.stopMedia}>Stop preview</Button></div>}
+          {media.error && <p role="alert" className="mt-3 text-sm text-destructive">{media.error}</p>}
         </section>
 
         <aside className="lg:pt-[88px]">
           <Card className="border shadow-sm ring-0">
-            <CardHeader><CardTitle>{waiting ? "You’re in the waiting room" : "Join support session"}</CardTitle><CardDescription>{waiting ? "The support agent has been notified." : `Room ${roomId} · Hosted by Alex Morgan`}</CardDescription></CardHeader>
+            <CardHeader><CardTitle>{failed ? "Unable to join this room" : admitted ? "You’ve been admitted" : waiting ? "You’re in the waiting room" : "Join support session"}</CardTitle><CardDescription>{failed ? "Review the message below." : admitted ? "The agent accepted your request." : waiting ? signaling.room?.hostConnected ? "The support agent has been notified." : "Waiting for the support agent to connect." : `Room ${roomId}`}</CardDescription></CardHeader>
             <CardContent>
-              {waiting ? <div className="py-5 text-center"><span className="mx-auto grid size-12 place-items-center rounded-full bg-emerald-50 text-emerald-700"><Check className="size-6" /></span><p className="mt-4 font-medium">Your devices are ready</p><p className="mt-1 text-sm leading-6 text-muted-foreground">Keep this page open. You’ll enter automatically when Alex admits you.</p><Button variant="outline" className="mt-5" onClick={() => setWaiting(false)}>Leave waiting room</Button></div> : <div className="space-y-5"><Field><FieldLabel htmlFor="name">Your name</FieldLabel><Input id="name" placeholder="Enter your name" defaultValue="Jordan Taylor" /></Field><Alert className="bg-blue-50/60 text-blue-950"><Video /><AlertTitle>About this call</AlertTitle><AlertDescription>Your browser will use your camera and microphone only during the session.</AlertDescription></Alert><Button className="h-10 w-full" onClick={() => setWaiting(true)}><Video />Ask to join</Button></div>}
+              {waiting ? <div className="py-5 text-center"><span className="mx-auto grid size-12 place-items-center rounded-full bg-muted text-muted-foreground"><Check className="size-6" /></span><p className="mt-4 font-medium">{failed ? "Request ended" : admitted ? `${signaling.room?.hostName ?? "The agent"} admitted you` : signaling.status === "connecting" ? "Connecting…" : "Waiting for admission"}</p><p className="mt-1 text-sm leading-6 text-muted-foreground">{signaling.error ?? (signaling.status === "declined" ? "The agent declined your request." : admitted ? "Admission is working. Audio and video calling will be connected in the next milestone." : "Keep this page open until the agent responds.")}</p><Button variant="outline" className="mt-5" onClick={() => { signaling.leave(); media.stopMedia(); setWaiting(false); }}>Leave room</Button></div> : <div className="space-y-5"><Field><FieldLabel htmlFor="name">Your name</FieldLabel><Input id="name" maxLength={80} placeholder="Enter your name" value={name} onChange={(event) => setName(event.target.value)} /></Field><Alert className="bg-blue-50/60 text-blue-950"><Video /><AlertTitle>About this preview</AlertTitle><AlertDescription>Starting the preview requests camera and microphone access. Your media stays on this device.</AlertDescription></Alert><Button className="h-10 w-full" disabled={!name.trim()} onClick={() => setWaiting(true)}><Video />Ask to join</Button></div>}
             </CardContent>
           </Card>
         </aside>
@@ -46,6 +65,6 @@ export function CustomerJoin({ roomId }: { roomId: string }) {
   );
 }
 
-function DeviceToggle({ icon: Icon, label, detail, checked, onCheckedChange }: { icon: typeof Camera; label: string; detail: string; checked: boolean; onCheckedChange: (checked: boolean) => void }) {
-  return <div className="flex items-center gap-3 rounded-lg border bg-white p-3 shadow-xs"><span className="grid size-8 place-items-center rounded-md bg-muted text-muted-foreground"><Icon className="size-4" /></span><div className="min-w-0 flex-1"><p className="text-sm font-medium">{label}</p><p className="truncate text-xs text-muted-foreground">{detail}</p></div><Switch checked={checked} onCheckedChange={onCheckedChange} aria-label={`Toggle ${label}`} /></div>;
+function DeviceToggle({ icon: Icon, label, detail, checked, disabled, onCheckedChange }: { icon: typeof Camera; label: string; detail: string; checked: boolean; disabled: boolean; onCheckedChange: (checked: boolean) => void }) {
+  return <div className="flex items-center gap-3 rounded-lg border bg-white p-3 shadow-xs"><span className="grid size-8 place-items-center rounded-md bg-muted text-muted-foreground"><Icon className="size-4" /></span><div className="min-w-0 flex-1"><p className="text-sm font-medium">{label}</p><p className="truncate text-xs text-muted-foreground">{detail}</p></div><Switch checked={checked} disabled={disabled} onCheckedChange={onCheckedChange} aria-label={`Toggle ${label}`} /></div>;
 }

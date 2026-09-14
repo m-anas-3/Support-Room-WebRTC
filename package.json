@@ -3,12 +3,17 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "pnpm --filter @support-room/shared build",
     "dev": "next dev",
-    "build": "next build",
+    "dev:signaling": "pnpm --filter @support-room/shared build && pnpm --filter @support-room/signaling dev",
+    "build": "pnpm --filter @support-room/shared build && next build",
+    "build:signaling": "pnpm --filter @support-room/shared build && pnpm --filter @support-room/signaling build",
+    "test:signaling": "pnpm --filter @support-room/shared build && pnpm --filter @support-room/signaling test",
     "start": "next start",
     "lint": "eslint"
   },
   "dependencies": {
+    "@support-room/shared": "workspace:*",
     "@base-ui/react": "^1.8.0",
     "class-variance-authority": "^0.7.1",
     "cn": "^0.3.0",

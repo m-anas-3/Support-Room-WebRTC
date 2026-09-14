@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, Clock3, Signal, Users, Video } from "lucide-react";
+import { ArrowRight, Clock3, Link2, Signal, Users } from "lucide-react";
 
 import { AppShell } from "@/components/layout/app-shell";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -34,18 +34,14 @@ export function AgentDashboard() {
           <Card className="border shadow-sm ring-0">
             <CardHeader className="border-b">
               <div className="flex items-center justify-between gap-4">
-                <div><CardTitle>Waiting room</CardTitle><CardDescription>Customer ready for admission</CardDescription></div>
-                <Badge variant="secondary" className="text-amber-700">Waiting · 02:14</Badge>
+                <div><CardTitle>Start a support call</CardTitle><CardDescription>Create a private room and invite one customer</CardDescription></div>
+                <Badge variant="secondary">Ready</Badge>
               </div>
             </CardHeader>
             <CardContent>
               <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
-                <Avatar className="size-11"><AvatarFallback className="bg-blue-50 font-semibold text-blue-700">JT</AvatarFallback></Avatar>
-                <div className="min-w-0 flex-1"><p className="font-medium">Jordan Taylor</p><p className="mt-0.5 truncate text-sm text-muted-foreground">Order #SR-2481 · Device setup</p></div>
-                <Button render={<Link href="/room/SR-2481" />}><Video />Open room</Button>
-              </div>
-              <div className="mt-5 grid grid-cols-3 divide-x rounded-lg border bg-muted/25 py-3">
-                <Readiness label="Camera" value="Ready" /><Readiness label="Microphone" value="Ready" /><Readiness label="Network" value="36 ms" />
+                <span className="grid size-11 place-items-center rounded-full bg-blue-50 text-blue-700"><Link2 className="size-5" /></span>
+                <div className="min-w-0 flex-1"><p className="font-medium">No customer is waiting</p><p className="mt-0.5 text-sm text-muted-foreground">Use New room to generate an invitation link.</p></div>
               </div>
             </CardContent>
           </Card>
@@ -89,8 +85,4 @@ export function AgentDashboard() {
 
 function Metric({ icon: Icon, label, value, helper }: { icon: typeof Users; label: string; value: string; helper: string }) {
   return <Card className="border shadow-sm ring-0"><CardContent><div className="flex items-start justify-between"><div><p className="text-muted-foreground">{label}</p><p className="mt-2 text-[1.65rem] font-semibold leading-none tracking-[-0.035em]">{value}</p><p className="mt-2 text-xs text-muted-foreground">{helper}</p></div><span className="grid size-10 place-items-center rounded-lg bg-primary/8 text-primary"><Icon className="size-[18px]" /></span></div></CardContent></Card>;
-}
-
-function Readiness({ label, value }: { label: string; value: string }) {
-  return <div className="px-3 text-center"><p className="text-xs text-muted-foreground">{label}</p><p className="mt-1 text-xs font-medium text-emerald-700">{value}</p></div>;
 }
