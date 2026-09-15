@@ -10,6 +10,7 @@ SupportRoom now connects two browser participants with native WebRTC audio and v
 - `components/room/video-tile.tsx` attaches a stream to `video.srcObject`. Local video is muted and mirrored; remote video plays the other participant's audio. A playback button handles browsers that block autoplay.
 - `components/room/call-controls.tsx` controls actual tracks and provides explicit leave/end actions.
 - `hooks/use-screen-share.ts` owns display capture, camera restoration, browser stop-sharing events, and display-track cleanup.
+- `lib/webrtc/diagnostics.ts` turns cumulative WebRTC statistics into interval bitrate, packet loss, media activity, latency, and ICE-route details.
 - The customer changes from preflight to call view on the same page, preserving the existing media stream and signaling connection.
 
 ## Screen-sharing flow
@@ -54,9 +55,9 @@ SDP operations and incoming ICE messages are processed sequentially. Local candi
 
 ## Validation and current limits
 
-`pnpm test:signaling` checks admission, role and token enforcement, readiness, isolation, expiry, and the host reconnect window. `pnpm test:e2e` runs real Chromium peer connections with fake camera/microphone devices, checks inbound audio/video RTP bytes and rendered video, exercises track controls, and verifies cleanup.
+`pnpm test:signaling` checks admission, role and token enforcement, readiness, isolation, expiry, and the host reconnect window. `pnpm test:e2e` runs real Chromium peer connections with fake camera/microphone devices, checks inbound audio/video RTP bytes, verifies the live diagnostics panel, exercises track controls, and verifies cleanup.
 
-The tests use a separate `.next-e2e` directory and local test ports. Headless Chromium receives a separate fake native video track in place of the operating-system source picker, allowing the test to verify sender replacement, state relay, camera restoration, and display-track cleanup. The tests do not establish cross-network reliability. TURN, automatic recovery, numeric `getStats()` diagnostics, production identity, and persistent history remain future work.
+The tests use a separate `.next-e2e` directory and local test ports. Headless Chromium receives a separate fake native video track in place of the operating-system source picker, allowing the test to verify sender replacement, state relay, camera restoration, and display-track cleanup. The tests do not establish cross-network reliability. TURN, automatic recovery, production identity, and persistent history remain future work.
 
 ## Authoritative resources
 
@@ -68,4 +69,6 @@ The tests use a separate `.next-e2e` directory and local test ports. Headless Ch
 - [MDN: getDisplayMedia](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getDisplayMedia)
 - [MDN: replaceTrack](https://developer.mozilla.org/en-US/docs/Web/API/RTCRtpSender/replaceTrack)
 - [MDN: MediaStreamTrack ended event](https://developer.mozilla.org/en-US/docs/Web/API/MediaStreamTrack/ended_event)
+- [W3C: WebRTC Statistics API](https://www.w3.org/TR/webrtc-stats/)
+- [MDN: RTCPeerConnection.getStats](https://developer.mozilla.org/en-US/docs/Web/API/RTCPeerConnection/getStats)
 - [Official WebRTC peer connection sample](https://webrtc.github.io/samples/src/content/peerconnection/pc1/)

@@ -2,7 +2,7 @@
 
 SupportRoom is a browser application for private one-to-one video support calls. The frontend is built with Next.js, TypeScript, Tailwind CSS, and shadcn/ui. A Node.js `ws` service handles room creation, waiting-room admission, and WebRTC negotiation messages.
 
-The current implementation includes the frontend screens, real camera and microphone previews, WebSocket room signaling, and one-to-one WebRTC audio/video after admission. Calls include microphone/camera controls, screen sharing for either participant, and complete media-track cleanup.
+The current implementation includes the frontend screens, real camera and microphone previews, WebSocket room signaling, and one-to-one WebRTC audio/video after admission. Calls include microphone/camera controls, screen sharing for either participant, complete media-track cleanup, and live connection diagnostics from `getStats()`.
 
 ## Development
 
@@ -30,6 +30,7 @@ Start the agent's camera, then start the customer's preview and ask to join. Adm
 - `packages/shared`: validated message schemas and shared TypeScript types
 - `docs/signaling.md`: signaling flow, configuration, and current boundaries
 - `docs/webrtc.md`: peer connection implementation and learning concepts
+- `docs/diagnostics.md`: metric calculations, interpretation, and tradeoffs
 
 ## Validation
 
@@ -42,4 +43,4 @@ pnpm build:signaling
 pnpm exec next build --webpack
 ```
 
-The browser tests use fake media devices and separate test servers on ports 3100 and 8081. Calls across restricted networks may require TURN, which is not configured yet. Automated recovery, numeric connection statistics, Supabase authentication, and persistent history are subsequent milestones.
+The browser tests use fake media devices and separate test servers on ports 3100 and 8081. Calls across restricted networks may require TURN, which is not configured yet. Automated recovery, Supabase authentication, and persistent history are subsequent milestones.

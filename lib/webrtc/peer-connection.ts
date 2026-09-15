@@ -1,4 +1,5 @@
 import type { ClientMessage, SignalMessage } from "@support-room/shared";
+import { collectPeerDiagnostics, emptyPeerDiagnostics, type DiagnosticsHistory, type PeerDiagnostics } from "@/lib/webrtc/diagnostics";
 
 export type PeerConnectionSnapshot = {
   connectionState: RTCPeerConnectionState | "idle";
@@ -7,13 +8,14 @@ export type PeerConnectionSnapshot = {
   signalingState: RTCSignalingState | "idle";
   remoteStream: MediaStream | null;
   remoteScreenSharing: boolean;
+  diagnostics: PeerDiagnostics;
   error: string | null;
 };
 
 const initialSnapshot: PeerConnectionSnapshot = {
   connectionState: "idle", iceConnectionState: "idle",
   iceGatheringState: "idle", signalingState: "idle",
-  remoteStream: null, remoteScreenSharing: false, error: null,
+  remoteStream: null, remoteScreenSharing: false, diagnostics: emptyPeerDiagnostics, error: null,
 };
 
 type Options = {
@@ -76,6 +78,10 @@ export class PeerConnectionStore {
     let unsubscribe = () => {};
     let remoteScreenSharing = false;
     let videoSender: RTCRtpSender | null = null;
+    let diagnostics = emptyPeerDiagnostics;
+    let diagnosticsHistory: DiagnosticsHistory = new Map();
+    let diagnosticsPending = false;
+    let diagnosticsTimer: ReturnType<typeof setInterval> | null = null;
     const remoteStream = new MediaStream();
     const remoteCandidates: SerializedCandidate[] = [];
     const localCandidates: SerializedCandidate[] = [];
@@ -89,7 +95,26 @@ export class PeerConnectionStore {
         signalingState: pc.signalingState,
         remoteStream: remoteStream.getTracks().length ? remoteStream : null,
         remoteScreenSharing,
+        diagnostics,
         error: null });
+    };
+
+    const pollDiagnostics = async () => {
+      if (disposed || diagnosticsPending || pc.connectionState !== "connected") return;
+      diagnosticsPending = true;
+      try {
+        const result = collectPeerDiagnostics(await pc.getStats(), diagnosticsHistory);
+        if (disposed) return;
+        diagnostics = result.diagnostics;
+        diagnosticsHistory = result.history;
+        update();
+      } catch {
+        if (disposed) return;
+        diagnostics = { ...diagnostics, error: "Live connection statistics are unavailable in this browser." };
+        update();
+      } finally {
+        diagnosticsPending = false;
+      }
     };
 
     const dispose = () => {
@@ -97,6 +122,7 @@ export class PeerConnectionStore {
       disposed = true;
       if (this.replaceVideoTrack === replaceVideoTrack) this.replaceVideoTrack = null;
       clearTimeout(timeout);
+      if (diagnosticsTimer) clearInterval(diagnosticsTimer);
       unsubscribe();
       pc.onicecandidate = null;
       pc.ontrack = null;
@@ -164,7 +190,10 @@ export class PeerConnectionStore {
       update();
     };
     pc.onconnectionstatechange = () => {
-      if (pc.connectionState === "connected") clearTimeout(timeout);
+      if (pc.connectionState === "connected") {
+        clearTimeout(timeout);
+        void pollDiagnostics();
+      }
       if (pc.connectionState === "failed") return fail("The media connection failed. Leave and rejoin; a TURN relay may be needed on this network.");
       update();
     };
@@ -228,6 +257,7 @@ export class PeerConnectionStore {
           fail("Could not negotiate the call. Leave and rejoin the room.");
         });
       });
+      diagnosticsTimer = setInterval(() => { void pollDiagnostics(); }, 2000);
       update();
       // Announce readiness only after the connection and listener exist.
       post({ type: "peer-ready" });

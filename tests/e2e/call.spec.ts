@@ -88,6 +88,14 @@ test("connects two real browser peers, controls tracks, and cleans up", async ({
     })).toEqual(["audio", "video"]);
   }
 
+  await expect(host.getByTestId("diagnostic-send-bitrate")).not.toHaveText("—");
+  await expect(host.getByTestId("diagnostic-receive-bitrate")).not.toHaveText("—");
+  await expect(host.getByTestId("diagnostic-latency")).not.toHaveText("—");
+  await expect(host.getByTestId("diagnostic-packet-loss")).not.toHaveText("—");
+  await expect(host.getByTestId("diagnostic-ice-route")).toContainText("Host");
+  await expect(host.getByTestId("diagnostic-send-active")).toHaveCount(2);
+  await expect(host.getByTestId("diagnostic-receive-active")).toHaveCount(2);
+
   const hostCameraTrackId = await host.evaluate(() => {
     const peer = (window as unknown as { supportTestPeers: RTCPeerConnection[] }).supportTestPeers.at(-1)!;
     return peer.getSenders().find((sender) => sender.track?.kind === "video")?.track?.id;
