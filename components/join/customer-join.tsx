@@ -14,6 +14,7 @@ import { Switch } from "@/components/ui/switch";
 import { Progress } from "@/components/ui/progress";
 import { useLocalMedia } from "@/hooks/use-local-media";
 import { usePeerConnection } from "@/hooks/use-peer-connection";
+import { useScreenShare } from "@/hooks/use-screen-share";
 import { useSignaling } from "@/hooks/use-signaling";
 import { CustomerCall } from "@/components/room/customer-call";
 
@@ -27,6 +28,12 @@ export function CustomerJoin({ roomId }: { roomId: string }) {
   const isReady = media.status === "ready";
   const failed = ["error", "closed", "disconnected", "declined"].includes(signaling.status);
   const peer = usePeerConnection({ role: "customer", localStream: media.stream, enabled: admitted && signaling.status === "connected", send: signaling.send, subscribeToSignals: signaling.subscribeToSignals });
+  const screenShare = useScreenShare({
+    cameraStream: media.stream,
+    enabled: peer.connectionState === "connected",
+    replaceOutgoingVideoTrack: peer.replaceOutgoingVideoTrack,
+    announce: (active) => { if (signaling.status === "connected") signaling.send({ type: "screen-share-state", active }); },
+  });
 
   useEffect(() => {
     const video = videoRef.current;
@@ -37,7 +44,7 @@ export function CustomerJoin({ roomId }: { roomId: string }) {
   }, [media.stream]);
 
   if (admitted && !failed && media.stream) {
-    return <CustomerCall name={name} hostName={signaling.room?.hostName ?? "Support agent"} localStream={media.stream} remoteStream={peer.remoteStream} connectionState={peer.connectionState} error={peer.error} cameraEnabled={media.isCameraEnabled} microphoneEnabled={media.isMicrophoneEnabled} onToggleCamera={media.toggleCamera} onToggleMicrophone={media.toggleMicrophone} onLeave={() => { peer.close(); media.stopMedia(); signaling.leave(); setWaiting(false); }} />;
+    return <CustomerCall name={name} hostName={signaling.room?.hostName ?? "Support agent"} localStream={screenShare.displayStream ?? media.stream} remoteStream={peer.remoteStream} connectionState={peer.connectionState} error={screenShare.error || peer.error} cameraEnabled={media.isCameraEnabled} microphoneEnabled={media.isMicrophoneEnabled} screenSharing={screenShare.isSharing} remoteScreenSharing={peer.remoteScreenSharing} screenShareSupported={screenShare.supported} screenShareChanging={screenShare.isChanging} onToggleCamera={media.toggleCamera} onToggleMicrophone={media.toggleMicrophone} onToggleScreenShare={() => { if (screenShare.isSharing) void screenShare.stopScreenShare(); else void screenShare.startScreenShare(); }} onLeave={() => { screenShare.releaseScreenShare(); peer.close(); media.stopMedia(); signaling.leave(); setWaiting(false); }} />;
   }
 
   return (
@@ -63,7 +70,7 @@ export function CustomerJoin({ roomId }: { roomId: string }) {
           <Card className="border shadow-sm ring-0">
             <CardHeader><CardTitle>{failed ? "Unable to join this room" : admitted ? "You’ve been admitted" : waiting ? "You’re in the waiting room" : "Join support session"}</CardTitle><CardDescription>{failed ? "Review the message below." : admitted ? "The agent accepted your request." : waiting ? signaling.room?.hostConnected ? "The support agent has been notified." : "Waiting for the support agent to connect." : `Room ${roomId}`}</CardDescription></CardHeader>
             <CardContent>
-              {waiting ? <div className="py-5 text-center"><span className="mx-auto grid size-12 place-items-center rounded-full bg-muted text-muted-foreground"><Check className="size-6" /></span><p className="mt-4 font-medium">{failed ? "Request ended" : admitted ? `${signaling.room?.hostName ?? "The agent"} admitted you` : signaling.status === "connecting" ? "Connecting…" : "Waiting for admission"}</p><p className="mt-1 text-sm leading-6 text-muted-foreground">{signaling.error ?? (signaling.status === "declined" ? "The agent declined your request." : "Keep this page open until the agent responds.")}</p><Button variant="outline" className="mt-5" onClick={() => { peer.close(); signaling.leave(); media.stopMedia(); setWaiting(false); }}>Leave room</Button></div> : <div className="space-y-5"><Field><FieldLabel htmlFor="name">Your name</FieldLabel><Input id="name" maxLength={80} placeholder="Enter your name" value={name} onChange={(event) => setName(event.target.value)} /></Field><Alert className="bg-blue-50/60 text-blue-950"><Video /><AlertTitle>About this preview</AlertTitle><AlertDescription>Preview media stays on this device. It is sent to the agent only after admission.</AlertDescription></Alert><Button className="h-10 w-full" disabled={!name.trim() || !isReady} onClick={() => setWaiting(true)}><Video />Ask to join</Button>{!isReady && <p className="text-center text-xs text-muted-foreground">Start the device preview before asking to join.</p>}</div>}
+              {waiting ? <div className="py-5 text-center"><span className="mx-auto grid size-12 place-items-center rounded-full bg-muted text-muted-foreground"><Check className="size-6" /></span><p className="mt-4 font-medium">{failed ? "Request ended" : admitted ? `${signaling.room?.hostName ?? "The agent"} admitted you` : signaling.status === "connecting" ? "Connecting…" : "Waiting for admission"}</p><p className="mt-1 text-sm leading-6 text-muted-foreground">{signaling.error ?? (signaling.status === "declined" ? "The agent declined your request." : "Keep this page open until the agent responds.")}</p><Button variant="outline" className="mt-5" onClick={() => { screenShare.releaseScreenShare(); peer.close(); signaling.leave(); media.stopMedia(); setWaiting(false); }}>Leave room</Button></div> : <div className="space-y-5"><Field><FieldLabel htmlFor="name">Your name</FieldLabel><Input id="name" maxLength={80} placeholder="Enter your name" value={name} onChange={(event) => setName(event.target.value)} /></Field><Alert className="bg-blue-50/60 text-blue-950"><Video /><AlertTitle>About this preview</AlertTitle><AlertDescription>Preview media stays on this device. It is sent to the agent only after admission.</AlertDescription></Alert><Button className="h-10 w-full" disabled={!name.trim() || !isReady} onClick={() => setWaiting(true)}><Video />Ask to join</Button>{!isReady && <p className="text-center text-xs text-muted-foreground">Start the device preview before asking to join.</p>}</div>}
             </CardContent>
           </Card>
         </aside>

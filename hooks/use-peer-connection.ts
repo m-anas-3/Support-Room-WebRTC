@@ -20,5 +20,5 @@ export function usePeerConnection({ role, localStream, enabled, send, subscribeT
     return store.connect({ role, localStream, configuration: getRtcConfiguration, send, subscribeToSignals });
   }, [enabled, localStream, role, send, store, subscribeToSignals]);
 
-  return { ...snapshot, close: store.close };
+  return { ...snapshot, close: store.close, replaceOutgoingVideoTrack: store.replaceOutgoingVideoTrack };
 }

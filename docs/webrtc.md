@@ -1,6 +1,6 @@
 # WebRTC peer connection milestone
 
-SupportRoom now connects two browser participants with native WebRTC audio and video after the agent admits the customer.
+SupportRoom now connects two browser participants with native WebRTC audio and video after the agent admits the customer. Either participant can replace their outgoing camera video with a shared screen.
 
 ## What changed
 
@@ -9,7 +9,18 @@ SupportRoom now connects two browser participants with native WebRTC audio and v
 - `lib/webrtc/config.ts` configures STUN from `NEXT_PUBLIC_STUN_URLS`. The development default matches the official WebRTC samples. An empty value disables external STUN for local-network testing.
 - `components/room/video-tile.tsx` attaches a stream to `video.srcObject`. Local video is muted and mirrored; remote video plays the other participant's audio. A playback button handles browsers that block autoplay.
 - `components/room/call-controls.tsx` controls actual tracks and provides explicit leave/end actions.
+- `hooks/use-screen-share.ts` owns display capture, camera restoration, browser stop-sharing events, and display-track cleanup.
 - The customer changes from preflight to call view on the same page, preserving the existing media stream and signaling connection.
+
+## Screen-sharing flow
+
+1. The participant clicks **Share screen**. The click is important because browsers require a fresh user action before `getDisplayMedia()` can show its source picker.
+2. The browser returns a new display `MediaStream` after the participant chooses a screen, window, or tab.
+3. The app finds the existing video `RTCRtpSender` and calls `replaceTrack(displayTrack)`. The microphone sender remains unchanged, and a normal same-kind replacement does not need a second SDP offer/answer exchange.
+4. A small `screen-share-state` message tells the other participant to label and fit the remote video as a presentation. The screen pixels still travel through WebRTC rather than the WebSocket.
+5. Clicking the app control or the browser's own stop-sharing control restores the live camera track and stops every display-capture track.
+
+The display stream is separate from the camera/microphone stream. This keeps ownership clear: `useLocalMedia` releases device tracks, while `useScreenShare` releases display tracks.
 
 ## Connection flow
 
@@ -37,11 +48,15 @@ SDP operations and incoming ICE messages are processed sequentially. Local candi
 
 **Mute and release:** setting `track.enabled = false` keeps the track alive and sends silence or black video. `track.stop()` ends capture. Closing the peer connection ends its transport but does not replace stopping the local device tracks. Room leave handles both.
 
+**Track replacement:** `replaceTrack()` changes the source used by an existing RTP sender. Camera and screen are both video tracks, so the transport, transceiver, and negotiated video media section can usually stay in place.
+
+**Transient permission:** screen-sharing permission cannot be saved for later. The browser must ask again and the call must originate from a current user action each time sharing starts.
+
 ## Validation and current limits
 
 `pnpm test:signaling` checks admission, role and token enforcement, readiness, isolation, expiry, and the host reconnect window. `pnpm test:e2e` runs real Chromium peer connections with fake camera/microphone devices, checks inbound audio/video RTP bytes and rendered video, exercises track controls, and verifies cleanup.
 
-The tests use a separate `.next-e2e` directory and local test ports. They do not establish cross-network reliability. TURN, screen sharing, automatic recovery, numeric `getStats()` diagnostics, production identity, and persistent history remain future work.
+The tests use a separate `.next-e2e` directory and local test ports. Headless Chromium receives a separate fake native video track in place of the operating-system source picker, allowing the test to verify sender replacement, state relay, camera restoration, and display-track cleanup. The tests do not establish cross-network reliability. TURN, automatic recovery, numeric `getStats()` diagnostics, production identity, and persistent history remain future work.
 
 ## Authoritative resources
 
@@ -50,4 +65,7 @@ The tests use a separate `.next-e2e` directory and local test ports. They do not
 - [MDN: receiving remote tracks](https://developer.mozilla.org/en-US/docs/Web/API/RTCPeerConnection/track_event)
 - [MDN: MediaStreamTrack.enabled](https://developer.mozilla.org/en-US/docs/Web/API/MediaStreamTrack/enabled)
 - [MDN: closing a peer connection](https://developer.mozilla.org/en-US/docs/Web/API/RTCPeerConnection/close)
+- [MDN: getDisplayMedia](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getDisplayMedia)
+- [MDN: replaceTrack](https://developer.mozilla.org/en-US/docs/Web/API/RTCRtpSender/replaceTrack)
+- [MDN: MediaStreamTrack ended event](https://developer.mozilla.org/en-US/docs/Web/API/MediaStreamTrack/ended_event)
 - [Official WebRTC peer connection sample](https://webrtc.github.io/samples/src/content/peerconnection/pc1/)

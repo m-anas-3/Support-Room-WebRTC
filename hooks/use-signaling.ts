@@ -72,7 +72,7 @@ export function useSignaling({ roomId, role, name, enabled = true, onDisconnect 
             setError(message.reason === "expired" ? "This room has expired." : "The support agent ended this room.");
             signalListeners.current.forEach((listener) => listener(message));
             break;
-          case "offer": case "answer": case "ice-candidate": case "peers-ready": case "peer-left":
+          case "offer": case "answer": case "ice-candidate": case "screen-share-state": case "peers-ready": case "peer-left":
             signalListeners.current.forEach((listener) => listener(message));
             break;
         }

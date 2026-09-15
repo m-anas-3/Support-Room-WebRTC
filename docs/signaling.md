@@ -1,6 +1,6 @@
 # Signaling milestone
 
-This milestone adds an in-memory WebSocket signaling service for one host and one customer. It creates rooms, checks separate host and invitation tokens, tracks the waiting state, lets the host admit or decline the customer, and forwards WebRTC offer, answer, and ICE candidate messages after admission.
+This milestone adds an in-memory WebSocket signaling service for one host and one customer. It creates rooms, checks separate host and invitation tokens, tracks the waiting state, lets the host admit or decline the customer, and forwards WebRTC offer, answer, ICE candidate, and screen-share state messages after admission.
 
 The signaling server does not carry audio or video. Media now flows through the browser's `RTCPeerConnection`. The room screen shows real connection states; numeric metrics and the selected candidate remain empty until the diagnostics milestone adds `getStats()` measurements.
 

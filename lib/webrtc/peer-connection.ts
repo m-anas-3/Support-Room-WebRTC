@@ -6,13 +6,14 @@ export type PeerConnectionSnapshot = {
   iceGatheringState: RTCIceGatheringState | "idle";
   signalingState: RTCSignalingState | "idle";
   remoteStream: MediaStream | null;
+  remoteScreenSharing: boolean;
   error: string | null;
 };
 
 const initialSnapshot: PeerConnectionSnapshot = {
   connectionState: "idle", iceConnectionState: "idle",
   iceGatheringState: "idle", signalingState: "idle",
-  remoteStream: null, error: null,
+  remoteStream: null, remoteScreenSharing: false, error: null,
 };
 
 type Options = {
@@ -30,6 +31,7 @@ export class PeerConnectionStore {
   private snapshot = initialSnapshot;
   private listeners = new Set<() => void>();
   private dispose: (() => void) | null = null;
+  private replaceVideoTrack: ((track: MediaStreamTrack) => Promise<void>) | null = null;
 
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);
@@ -49,6 +51,12 @@ export class PeerConnectionStore {
     this.publish({ ...initialSnapshot, connectionState: "closed" });
   };
 
+  replaceOutgoingVideoTrack = async (track: MediaStreamTrack) => {
+    if (track.kind !== "video") throw new Error("Only a video track can replace the outgoing camera.");
+    if (!this.replaceVideoTrack) throw new Error("The media connection is not ready for screen sharing.");
+    await this.replaceVideoTrack(track);
+  };
+
   connect({ role, localStream, configuration, send, subscribeToSignals }: Options) {
     this.close();
     let pc: RTCPeerConnection;
@@ -66,6 +74,8 @@ export class PeerConnectionStore {
     let descriptionSent = false;
     let handling = Promise.resolve();
     let unsubscribe = () => {};
+    let remoteScreenSharing = false;
+    let videoSender: RTCRtpSender | null = null;
     const remoteStream = new MediaStream();
     const remoteCandidates: SerializedCandidate[] = [];
     const localCandidates: SerializedCandidate[] = [];
@@ -78,12 +88,14 @@ export class PeerConnectionStore {
         iceGatheringState: pc.iceGatheringState,
         signalingState: pc.signalingState,
         remoteStream: remoteStream.getTracks().length ? remoteStream : null,
+        remoteScreenSharing,
         error: null });
     };
 
     const dispose = () => {
       if (disposed) return;
       disposed = true;
+      if (this.replaceVideoTrack === replaceVideoTrack) this.replaceVideoTrack = null;
       clearTimeout(timeout);
       unsubscribe();
       pc.onicecandidate = null;
@@ -108,6 +120,12 @@ export class PeerConnectionStore {
     };
     const timeout = setTimeout(() => fail("The media connection timed out. Leave and rejoin; some networks require a TURN relay."), 30000);
     this.dispose = dispose;
+
+    const replaceVideoTrack = async (track: MediaStreamTrack) => {
+      if (disposed || !videoSender) throw new Error("The video sender is unavailable.");
+      await videoSender.replaceTrack(track);
+    };
+    this.replaceVideoTrack = replaceVideoTrack;
 
     const post = (message: ClientMessage) => {
       if (!disposed && !send(message)) throw new Error("Signaling is unavailable.");
@@ -191,12 +209,19 @@ export class PeerConnectionStore {
             remoteCandidates.push(message.candidate);
           } else await addRemoteCandidate(message.candidate);
           break;
+        case "screen-share-state":
+          remoteScreenSharing = message.active;
+          update();
+          break;
         case "peer-left": case "room-closed": case "declined": this.close(); break;
       }
     };
 
     try {
-      localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
+      localStream.getTracks().forEach((track) => {
+        const sender = pc.addTrack(track, localStream);
+        if (track.kind === "video") videoSender = sender;
+      });
       unsubscribe = subscribeToSignals((message) => {
         // Process async SDP and candidate operations in signaling arrival order.
         handling = handling.then(() => handle(message)).catch(() => {

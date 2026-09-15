@@ -10,6 +10,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useLocalMedia } from "@/hooks/use-local-media";
 import { usePeerConnection } from "@/hooks/use-peer-connection";
+import { useScreenShare } from "@/hooks/use-screen-share";
 import { useSignaling } from "@/hooks/use-signaling";
 import { invitationUrl, readHostRoom } from "@/lib/signaling/client";
 import { CallControls } from "./call-controls";
@@ -23,6 +24,12 @@ export function SupportCall({ roomId }: { roomId: string }) {
   const waitingCustomer = signaling.room?.customerState === "waiting";
   const mediaReady = media.status === "ready" && Boolean(media.stream);
   const peer = usePeerConnection({ role: "host", localStream: media.stream, enabled: admitted && signaling.status === "connected", send: signaling.send, subscribeToSignals: signaling.subscribeToSignals });
+  const screenShare = useScreenShare({
+    cameraStream: media.stream,
+    enabled: peer.connectionState === "connected",
+    replaceOutgoingVideoTrack: peer.replaceOutgoingVideoTrack,
+    announce: (active) => { if (signaling.status === "connected") signaling.send({ type: "screen-share-state", active }); },
+  });
 
   async function copyInvite() {
     const created = readHostRoom(roomId);
@@ -31,6 +38,7 @@ export function SupportCall({ roomId }: { roomId: string }) {
     catch { toast.error("Could not copy the invitation. Check your browser permissions."); }
   }
   function endRoom() {
+    screenShare.releaseScreenShare();
     peer.close();
     media.stopMedia();
     signaling.leave();
@@ -48,12 +56,12 @@ export function SupportCall({ roomId }: { roomId: string }) {
 
       <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(0,1fr)_330px]">
         <section className="flex min-h-[620px] flex-col p-4 sm:p-6">
-          {(media.error || peer.error || signaling.error) && <p role="alert" className="mb-4 rounded-lg border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-200">{media.error || peer.error || signaling.error}</p>}
+          {(media.error || screenShare.error || peer.error || signaling.error) && <p role="alert" className="mb-4 rounded-lg border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-200">{media.error || screenShare.error || peer.error || signaling.error}</p>}
           <div className="grid min-h-0 flex-1 gap-4 md:grid-cols-2">
-            <VideoTile stream={media.stream} name="Alex Morgan" label="You" local cameraEnabled={media.isCameraEnabled} microphoneEnabled={media.isMicrophoneEnabled} testId="local-video" action={!mediaReady ? <Button size="sm" disabled={media.status === "requesting"} className="bg-white text-slate-950 hover:bg-slate-200" onClick={() => void media.startMedia()}><Camera />{media.status === "requesting" ? "Requesting access…" : "Start camera"}</Button> : undefined} />
-            {admitted ? <VideoTile stream={peer.remoteStream} name={signaling.room?.customerName ?? "Customer"} label={peer.connectionState === "connected" ? "Customer" : "Connecting…"} testId="remote-video" /> : <WaitingTile customerName={signaling.room?.customerName} connected={signaling.status === "connected"} waiting={waitingCustomer} error={signaling.error} canAdmit={mediaReady} onDecline={() => signaling.send({ type: "decline" })} onAdmit={() => signaling.send({ type: "admit" })} />}
+            <VideoTile stream={screenShare.displayStream ?? media.stream} name="Alex Morgan" label={screenShare.isSharing ? "You · Presenting" : "You"} local={!screenShare.isSharing} fit={screenShare.isSharing ? "contain" : "cover"} cameraEnabled={screenShare.isSharing || media.isCameraEnabled} microphoneEnabled={media.isMicrophoneEnabled} testId="local-video" action={!mediaReady ? <Button size="sm" disabled={media.status === "requesting"} className="bg-white text-slate-950 hover:bg-slate-200" onClick={() => void media.startMedia()}><Camera />{media.status === "requesting" ? "Requesting access…" : "Start camera"}</Button> : undefined} />
+            {admitted ? <VideoTile stream={peer.remoteStream} name={signaling.room?.customerName ?? "Customer"} label={peer.remoteScreenSharing ? "Customer · Presenting" : peer.connectionState === "connected" ? "Customer" : "Connecting…"} fit={peer.remoteScreenSharing ? "contain" : "cover"} testId="remote-video" /> : <WaitingTile customerName={signaling.room?.customerName} connected={signaling.status === "connected"} waiting={waitingCustomer} error={signaling.error} canAdmit={mediaReady} onDecline={() => signaling.send({ type: "decline" })} onAdmit={() => signaling.send({ type: "admit" })} />}
           </div>
-          <div className="mt-5"><CallControls microphoneEnabled={media.isMicrophoneEnabled} cameraEnabled={media.isCameraEnabled} mediaReady={mediaReady} host onToggleMicrophone={media.toggleMicrophone} onToggleCamera={media.toggleCamera} onLeave={endRoom} /></div>
+          <div className="mt-5"><CallControls microphoneEnabled={media.isMicrophoneEnabled} cameraEnabled={media.isCameraEnabled} mediaReady={mediaReady} screenShareReady={peer.connectionState === "connected"} screenSharing={screenShare.isSharing} screenShareSupported={screenShare.supported} screenShareChanging={screenShare.isChanging} host onToggleMicrophone={media.toggleMicrophone} onToggleCamera={media.toggleCamera} onToggleScreenShare={() => { if (screenShare.isSharing) void screenShare.stopScreenShare(); else void screenShare.startScreenShare(); }} onLeave={endRoom} /></div>
         </section>
 
         <aside className="border-t border-white/10 bg-[#172033] lg:border-t-0 lg:border-l">

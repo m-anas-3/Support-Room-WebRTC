@@ -14,16 +14,25 @@ async function trackLocalMedia(page: Page) {
       }
     };
     const original = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
-    navigator.mediaDevices.getUserMedia = async (constraints) => {
-      const stream = await original(constraints);
+    const instrumentStops = (stream: MediaStream, key: string) => {
       for (const track of stream.getTracks()) {
         const originalStop = track.stop.bind(track);
         track.stop = () => {
-          const count = Number(sessionStorage.getItem("supportroom:test-stopped-tracks") ?? 0);
-          sessionStorage.setItem("supportroom:test-stopped-tracks", String(count + 1));
+          const count = Number(sessionStorage.getItem(key) ?? 0);
+          sessionStorage.setItem(key, String(count + 1));
           originalStop();
         };
       }
+      return stream;
+    };
+    navigator.mediaDevices.getUserMedia = async (constraints) => {
+      return instrumentStops(await original(constraints), "supportroom:test-stopped-tracks");
+    };
+    // Headless Chromium cannot show an operating-system screen picker. Return a
+    // separate native video track so the test still exercises replaceTrack().
+    navigator.mediaDevices.getDisplayMedia = async () => {
+      const stream = instrumentStops(await original({ video: { width: 1280, height: 720 }, audio: false }), "supportroom:test-stopped-display-tracks");
+      Object.defineProperty(window, "supportTestDisplayStream", { value: stream, configurable: true });
       return stream;
     };
   });
@@ -79,6 +88,29 @@ test("connects two real browser peers, controls tracks, and cleans up", async ({
     })).toEqual(["audio", "video"]);
   }
 
+  const hostCameraTrackId = await host.evaluate(() => {
+    const peer = (window as unknown as { supportTestPeers: RTCPeerConnection[] }).supportTestPeers.at(-1)!;
+    return peer.getSenders().find((sender) => sender.track?.kind === "video")?.track?.id;
+  });
+  await host.getByRole("button", { name: "Share screen" }).click();
+  await expect(host.getByRole("button", { name: "Stop sharing" })).toBeVisible();
+  await expect(customer.getByText("Support agent · Presenting")).toBeVisible();
+  await expect.poll(() => host.evaluate(() => {
+    const peer = (window as unknown as { supportTestPeers: RTCPeerConnection[] }).supportTestPeers.at(-1)!;
+    return peer.getSenders().find((sender) => sender.track?.kind === "video")?.track?.id;
+  })).not.toBe(hostCameraTrackId);
+  await host.getByRole("button", { name: "Stop sharing" }).click();
+  await expect(host.getByRole("button", { name: "Share screen" })).toBeVisible();
+  await expect(customer.getByText("Support agent", { exact: true })).toBeVisible();
+  await expect.poll(() => host.evaluate(() => {
+    const peer = (window as unknown as { supportTestPeers: RTCPeerConnection[] }).supportTestPeers.at(-1)!;
+    return peer.getSenders().find((sender) => sender.track?.kind === "video")?.track?.id;
+  })).toBe(hostCameraTrackId);
+  await expect.poll(() => host.evaluate(() => Number(sessionStorage.getItem("supportroom:test-stopped-display-tracks") ?? 0))).toBeGreaterThanOrEqual(1);
+
+  await customer.getByRole("button", { name: "Share screen" }).click();
+  await expect(host.getByText("Customer · Presenting")).toBeVisible();
+
   await host.getByRole("button", { name: "Mute microphone" }).click();
   await expect(host.getByRole("button", { name: "Unmute microphone" })).toBeVisible();
   expect(await host.getByTestId("local-video").locator("video").evaluate((video) => ((video as HTMLVideoElement).srcObject as MediaStream).getAudioTracks()[0]?.enabled)).toBe(false);
@@ -89,6 +121,7 @@ test("connects two real browser peers, controls tracks, and cleans up", async ({
   await customer.getByRole("button", { name: "Leave call" }).last().click();
   await expect(host.getByText("Waiting for the customer")).toBeVisible();
   await expect.poll(() => customer.evaluate(() => Number(sessionStorage.getItem("supportroom:test-stopped-tracks") ?? 0))).toBeGreaterThanOrEqual(2);
+  await expect.poll(() => customer.evaluate(() => Number(sessionStorage.getItem("supportroom:test-stopped-display-tracks") ?? 0))).toBeGreaterThanOrEqual(1);
   await expect.poll(() => customer.evaluate(() => Number(sessionStorage.getItem("supportroom:test-closed-peers") ?? 0))).toBeGreaterThanOrEqual(1);
 
   await host.getByRole("button", { name: "End room" }).click();

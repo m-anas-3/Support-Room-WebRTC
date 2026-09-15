@@ -115,6 +115,8 @@ test("creates a private room, enforces admission, and relays negotiation", async
   assert.equal((await host.next("answer")).sdp, "test-answer");
   host.send({ type: "ice-candidate", candidate: null });
   assert.equal((await customer.next("ice-candidate")).candidate, null);
+  customer.send({ type: "screen-share-state", active: true });
+  assert.equal((await host.next("screen-share-state")).active, true);
 });
 
 test("rejects invalid credentials, duplicate customers, and unauthorized roles", async () => {
