@@ -32,7 +32,7 @@ export function useScreenShare({
 }: {
   cameraStream: MediaStream | null;
   enabled: boolean;
-  replaceOutgoingVideoTrack: (track: MediaStreamTrack) => Promise<void>;
+  replaceOutgoingVideoTrack: (track: MediaStreamTrack | null) => Promise<void>;
   announce: (active: boolean) => void;
 }) {
   const displayStreamRef = useRef<MediaStream | null>(null);
@@ -68,8 +68,8 @@ export function useScreenShare({
 
     try {
       const cameraTrack = cameraStreamRef.current?.getVideoTracks()[0];
-      if (restoreCamera && cameraTrack?.readyState === "live") {
-        await replaceTrackRef.current(cameraTrack);
+      if (restoreCamera) {
+        await replaceTrackRef.current(cameraTrack?.readyState === "live" ? cameraTrack : null);
       }
     } catch {
       if (mountedRef.current) setError("Your camera could not be restored. Leave and rejoin the call.");
@@ -90,12 +90,6 @@ export function useScreenShare({
       setError("This browser does not support screen sharing.");
       return;
     }
-    const cameraTrack = cameraStreamRef.current?.getVideoTracks()[0];
-    if (!cameraTrack || cameraTrack.readyState !== "live") {
-      setError("Start your camera before sharing your screen.");
-      return;
-    }
-
     const requestId = ++requestIdRef.current;
     setIsChanging(true);
     setError(null);

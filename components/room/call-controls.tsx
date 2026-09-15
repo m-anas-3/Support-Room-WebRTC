@@ -6,10 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
-export function CallControls({ microphoneEnabled, cameraEnabled, mediaReady, screenShareReady, screenSharing, screenShareSupported, screenShareChanging, host, onToggleMicrophone, onToggleCamera, onToggleScreenShare, onLeave }: {
+export function CallControls({ microphoneEnabled, cameraEnabled, mediaReady, cameraChanging = false, microphoneChanging = false, screenShareReady, screenSharing, screenShareSupported, screenShareChanging, host, onToggleMicrophone, onToggleCamera, onToggleScreenShare, onLeave }: {
   microphoneEnabled: boolean;
   cameraEnabled: boolean;
   mediaReady: boolean;
+  cameraChanging?: boolean;
+  microphoneChanging?: boolean;
   screenShareReady: boolean;
   screenSharing: boolean;
   screenShareSupported: boolean;
@@ -21,8 +23,8 @@ export function CallControls({ microphoneEnabled, cameraEnabled, mediaReady, scr
   onLeave: () => void;
 }) {
   return <div className="flex items-center justify-center gap-2">
-    <ControlButton label={microphoneEnabled ? "Mute microphone" : "Unmute microphone"} icon={microphoneEnabled ? Mic : MicOff} active={!microphoneEnabled} disabled={!mediaReady} onClick={onToggleMicrophone} />
-    <ControlButton label={screenSharing ? "Camera controls are paused while presenting" : cameraEnabled ? "Turn off camera" : "Turn on camera"} icon={cameraEnabled ? Camera : VideoOff} active={!cameraEnabled && !screenSharing} disabled={!mediaReady || screenSharing || screenShareChanging} onClick={onToggleCamera} />
+    <ControlButton label={microphoneChanging ? "Changing microphone" : microphoneEnabled ? "Mute microphone" : "Unmute microphone"} icon={microphoneEnabled ? Mic : MicOff} active={!microphoneEnabled} disabled={!mediaReady || microphoneChanging} onClick={onToggleMicrophone} />
+    <ControlButton label={cameraChanging ? "Changing camera" : screenSharing ? "Camera controls are paused while presenting" : cameraEnabled ? "Turn off camera" : "Turn on camera"} icon={cameraEnabled ? Camera : VideoOff} active={!cameraEnabled && !screenSharing} disabled={!mediaReady || cameraChanging || screenSharing || screenShareChanging} onClick={onToggleCamera} />
     <ControlButton label={!screenShareSupported ? "Screen sharing is unavailable in this browser" : screenSharing ? "Stop sharing" : screenShareChanging ? "Changing shared screen" : "Share screen"} icon={MonitorUp} active={screenSharing} activeTone="accent" disabled={!screenShareReady || !screenShareSupported || screenShareChanging} onClick={onToggleScreenShare} />
     <AlertDialog>
       <AlertDialogTrigger render={<Button size="icon-lg" aria-label={host ? "End room" : "Leave call"} className="ml-1 size-11 rounded-full bg-[#ea4335] text-white hover:bg-[#d93025] sm:ml-2" />}><PhoneOff /></AlertDialogTrigger>

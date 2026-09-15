@@ -8,6 +8,8 @@ export type PeerConnectionSnapshot = {
   signalingState: RTCSignalingState | "idle";
   remoteStream: MediaStream | null;
   remoteScreenSharing: boolean;
+  remoteCameraEnabled: boolean;
+  remoteMicrophoneEnabled: boolean;
   diagnostics: PeerDiagnostics;
   error: string | null;
 };
@@ -15,7 +17,8 @@ export type PeerConnectionSnapshot = {
 const initialSnapshot: PeerConnectionSnapshot = {
   connectionState: "idle", iceConnectionState: "idle",
   iceGatheringState: "idle", signalingState: "idle",
-  remoteStream: null, remoteScreenSharing: false, diagnostics: emptyPeerDiagnostics, error: null,
+  remoteStream: null, remoteScreenSharing: false, remoteCameraEnabled: true,
+  remoteMicrophoneEnabled: true, diagnostics: emptyPeerDiagnostics, error: null,
 };
 
 type Options = {
@@ -33,7 +36,8 @@ export class PeerConnectionStore {
   private snapshot = initialSnapshot;
   private listeners = new Set<() => void>();
   private dispose: (() => void) | null = null;
-  private replaceVideoTrack: ((track: MediaStreamTrack) => Promise<void>) | null = null;
+  private replaceVideoTrack: ((track: MediaStreamTrack | null) => Promise<void>) | null = null;
+  private replaceAudioTrack: ((track: MediaStreamTrack | null) => Promise<void>) | null = null;
 
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);
@@ -53,10 +57,16 @@ export class PeerConnectionStore {
     this.publish({ ...initialSnapshot, connectionState: "closed" });
   };
 
-  replaceOutgoingVideoTrack = async (track: MediaStreamTrack) => {
-    if (track.kind !== "video") throw new Error("Only a video track can replace the outgoing camera.");
+  replaceOutgoingVideoTrack = async (track: MediaStreamTrack | null) => {
+    if (track && track.kind !== "video") throw new Error("Only a video track can replace the outgoing camera.");
     if (!this.replaceVideoTrack) throw new Error("The media connection is not ready for screen sharing.");
     await this.replaceVideoTrack(track);
+  };
+
+  replaceOutgoingAudioTrack = async (track: MediaStreamTrack | null) => {
+    if (track && track.kind !== "audio") throw new Error("Only an audio track can replace the outgoing microphone.");
+    if (!this.replaceAudioTrack) throw new Error("The media connection is not ready for microphone changes.");
+    await this.replaceAudioTrack(track);
   };
 
   connect({ role, localStream, configuration, send, subscribeToSignals }: Options) {
@@ -77,7 +87,10 @@ export class PeerConnectionStore {
     let handling = Promise.resolve();
     let unsubscribe = () => {};
     let remoteScreenSharing = false;
+    let remoteCameraEnabled = true;
+    let remoteMicrophoneEnabled = true;
     let videoSender: RTCRtpSender | null = null;
+    let audioSender: RTCRtpSender | null = null;
     let diagnostics = emptyPeerDiagnostics;
     let diagnosticsHistory: DiagnosticsHistory = new Map();
     let diagnosticsPending = false;
@@ -95,6 +108,8 @@ export class PeerConnectionStore {
         signalingState: pc.signalingState,
         remoteStream: remoteStream.getTracks().length ? remoteStream : null,
         remoteScreenSharing,
+        remoteCameraEnabled,
+        remoteMicrophoneEnabled,
         diagnostics,
         error: null });
     };
@@ -121,6 +136,7 @@ export class PeerConnectionStore {
       if (disposed) return;
       disposed = true;
       if (this.replaceVideoTrack === replaceVideoTrack) this.replaceVideoTrack = null;
+      if (this.replaceAudioTrack === replaceAudioTrack) this.replaceAudioTrack = null;
       clearTimeout(timeout);
       if (diagnosticsTimer) clearInterval(diagnosticsTimer);
       unsubscribe();
@@ -147,11 +163,16 @@ export class PeerConnectionStore {
     const timeout = setTimeout(() => fail("The media connection timed out. Leave and rejoin; some networks require a TURN relay."), 30000);
     this.dispose = dispose;
 
-    const replaceVideoTrack = async (track: MediaStreamTrack) => {
+    const replaceVideoTrack = async (track: MediaStreamTrack | null) => {
       if (disposed || !videoSender) throw new Error("The video sender is unavailable.");
       await videoSender.replaceTrack(track);
     };
+    const replaceAudioTrack = async (track: MediaStreamTrack | null) => {
+      if (disposed || !audioSender) throw new Error("The audio sender is unavailable.");
+      await audioSender.replaceTrack(track);
+    };
     this.replaceVideoTrack = replaceVideoTrack;
+    this.replaceAudioTrack = replaceAudioTrack;
 
     const post = (message: ClientMessage) => {
       if (!disposed && !send(message)) throw new Error("Signaling is unavailable.");
@@ -242,15 +263,20 @@ export class PeerConnectionStore {
           remoteScreenSharing = message.active;
           update();
           break;
+        case "media-state":
+          remoteCameraEnabled = message.camera;
+          remoteMicrophoneEnabled = message.microphone;
+          update();
+          break;
         case "peer-left": case "room-closed": case "declined": this.close(); break;
       }
     };
 
     try {
-      localStream.getTracks().forEach((track) => {
-        const sender = pc.addTrack(track, localStream);
-        if (track.kind === "video") videoSender = sender;
-      });
+      const localVideoTrack = localStream.getVideoTracks()[0];
+      const localAudioTrack = localStream.getAudioTracks()[0];
+      videoSender = localVideoTrack ? pc.addTrack(localVideoTrack, localStream) : pc.addTransceiver("video", { direction: "sendrecv" }).sender;
+      audioSender = localAudioTrack ? pc.addTrack(localAudioTrack, localStream) : pc.addTransceiver("audio", { direction: "sendrecv" }).sender;
       unsubscribe = subscribeToSignals((message) => {
         // Process async SDP and candidate operations in signaling arrival order.
         handling = handling.then(() => handle(message)).catch(() => {

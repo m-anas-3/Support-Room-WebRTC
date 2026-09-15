@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Progress } from "@/components/ui/progress";
 import { useLocalMedia } from "@/hooks/use-local-media";
+import { useOutgoingMedia } from "@/hooks/use-outgoing-media";
 import { usePeerConnection } from "@/hooks/use-peer-connection";
 import { useScreenShare } from "@/hooks/use-screen-share";
 import { useSignaling } from "@/hooks/use-signaling";
@@ -34,6 +35,17 @@ export function CustomerJoin({ roomId }: { roomId: string }) {
     replaceOutgoingVideoTrack: peer.replaceOutgoingVideoTrack,
     announce: (active) => { if (signaling.status === "connected") signaling.send({ type: "screen-share-state", active }); },
   });
+  useOutgoingMedia({
+    connected: peer.connectionState === "connected",
+    audioTrack: media.audioTrack,
+    videoTrack: media.videoTrack,
+    videoOverrideActive: screenShare.isSharing,
+    cameraEnabled: media.isCameraEnabled,
+    microphoneEnabled: media.isMicrophoneEnabled,
+    replaceAudioTrack: peer.replaceOutgoingAudioTrack,
+    replaceVideoTrack: peer.replaceOutgoingVideoTrack,
+    send: signaling.send,
+  });
 
   useEffect(() => {
     const video = videoRef.current;
@@ -44,7 +56,7 @@ export function CustomerJoin({ roomId }: { roomId: string }) {
   }, [media.stream]);
 
   if (admitted && !failed && media.stream) {
-    return <CustomerCall name={name} hostName={signaling.room?.hostName ?? "Support agent"} localStream={screenShare.displayStream ?? media.stream} remoteStream={peer.remoteStream} connectionState={peer.connectionState} error={screenShare.error || peer.error} cameraEnabled={media.isCameraEnabled} microphoneEnabled={media.isMicrophoneEnabled} screenSharing={screenShare.isSharing} remoteScreenSharing={peer.remoteScreenSharing} screenShareSupported={screenShare.supported} screenShareChanging={screenShare.isChanging} onToggleCamera={media.toggleCamera} onToggleMicrophone={media.toggleMicrophone} onToggleScreenShare={() => { if (screenShare.isSharing) void screenShare.stopScreenShare(); else void screenShare.startScreenShare(); }} onLeave={() => { screenShare.releaseScreenShare(); peer.close(); media.stopMedia(); signaling.leave(); setWaiting(false); }} />;
+    return <CustomerCall name={name} hostName={signaling.room?.hostName ?? "Support agent"} localStream={screenShare.displayStream ?? media.stream} remoteStream={peer.remoteStream} connectionState={peer.connectionState} error={media.error || screenShare.error || peer.error} cameraEnabled={media.isCameraEnabled} microphoneEnabled={media.isMicrophoneEnabled} cameraChanging={["requesting", "recovering"].includes(media.cameraStatus)} microphoneChanging={["requesting", "recovering"].includes(media.microphoneStatus)} screenSharing={screenShare.isSharing} remoteScreenSharing={peer.remoteScreenSharing} remoteCameraEnabled={peer.remoteCameraEnabled} remoteMicrophoneEnabled={peer.remoteMicrophoneEnabled} screenShareSupported={screenShare.supported} screenShareChanging={screenShare.isChanging} onToggleCamera={media.toggleCamera} onToggleMicrophone={media.toggleMicrophone} onToggleScreenShare={() => { if (screenShare.isSharing) void screenShare.stopScreenShare(); else void screenShare.startScreenShare(); }} onLeave={() => { screenShare.releaseScreenShare(); peer.close(); media.stopMedia(); signaling.leave(); setWaiting(false); }} />;
   }
 
   return (
