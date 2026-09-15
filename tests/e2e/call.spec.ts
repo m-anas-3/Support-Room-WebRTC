@@ -88,6 +88,8 @@ test("connects two real browser peers, controls tracks, and cleans up", async ({
     })).toEqual(["audio", "video"]);
   }
 
+  await expect(host.getByTestId("host-diagnostics-panel")).toHaveCount(0);
+  await host.getByRole("button", { name: "Connection diagnostics" }).click();
   await expect(host.getByTestId("diagnostic-send-bitrate")).not.toHaveText("—");
   await expect(host.getByTestId("diagnostic-receive-bitrate")).not.toHaveText("—");
   await expect(host.getByTestId("diagnostic-latency")).not.toHaveText("—");
@@ -95,6 +97,14 @@ test("connects two real browser peers, controls tracks, and cleans up", async ({
   await expect(host.getByTestId("diagnostic-ice-route")).toContainText("Host");
   await expect(host.getByTestId("diagnostic-send-active")).toHaveCount(2);
   await expect(host.getByTestId("diagnostic-receive-active")).toHaveCount(2);
+  expect(await host.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight + 1)).toBe(true);
+  expect(await customer.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight + 1)).toBe(true);
+  expect(await host.getByTestId("host-call-stage").evaluate((stage) => stage.getBoundingClientRect().bottom <= window.innerHeight)).toBe(true);
+  expect(await customer.getByTestId("customer-call-stage").evaluate((stage) => stage.getBoundingClientRect().bottom <= window.innerHeight)).toBe(true);
+  expect(await host.getByTestId("host-diagnostics-panel").evaluate((panel) => {
+    const style = getComputedStyle(panel);
+    return style.overflowY === "auto" && panel.scrollHeight > panel.clientHeight;
+  })).toBe(true);
 
   const hostCameraTrackId = await host.evaluate(() => {
     const peer = (window as unknown as { supportTestPeers: RTCPeerConnection[] }).supportTestPeers.at(-1)!;

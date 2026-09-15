@@ -1,24 +1,28 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Camera, Check, ChevronLeft, Copy, Maximize2, MoreHorizontal, ShieldCheck, UserRound } from "lucide-react";
+import { Activity, Camera, Check, ChevronLeft, Copy, Maximize2, MoreVertical, Users, UserRound, X } from "lucide-react";
 import { toast } from "sonner";
 import { ConnectionDiagnostics } from "@/components/diagnostics/connection-diagnostics";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useLocalMedia } from "@/hooks/use-local-media";
 import { usePeerConnection } from "@/hooks/use-peer-connection";
 import { useScreenShare } from "@/hooks/use-screen-share";
 import { useSignaling } from "@/hooks/use-signaling";
 import { invitationUrl, readHostRoom } from "@/lib/signaling/client";
+import { cn } from "@/lib/utils";
 import { CallControls } from "./call-controls";
 import { VideoTile } from "./video-tile";
 
+type Panel = "diagnostics" | "people" | null;
+
 export function SupportCall({ roomId }: { roomId: string }) {
   const router = useRouter();
+  const [panel, setPanel] = useState<Panel>(null);
   const media = useLocalMedia();
   const signaling = useSignaling({ roomId, role: "host", name: "Alex Morgan", onDisconnect: media.stopMedia });
   const admitted = signaling.room?.customerState === "admitted";
@@ -31,6 +35,8 @@ export function SupportCall({ roomId }: { roomId: string }) {
     replaceOutgoingVideoTrack: peer.replaceOutgoingVideoTrack,
     announce: (active) => { if (signaling.status === "connected") signaling.send({ type: "screen-share-state", active }); },
   });
+  const error = media.error || screenShare.error || peer.error || signaling.error;
+  const reference = signaling.room?.reference || "Support session";
 
   async function copyInvite() {
     const created = readHostRoom(roomId);
@@ -38,6 +44,7 @@ export function SupportCall({ roomId }: { roomId: string }) {
     try { await navigator.clipboard.writeText(invitationUrl(created)); toast.success("Invitation link copied"); }
     catch { toast.error("Could not copy the invitation. Check your browser permissions."); }
   }
+
   function endRoom() {
     screenShare.releaseScreenShare();
     peer.close();
@@ -47,39 +54,70 @@ export function SupportCall({ roomId }: { roomId: string }) {
   }
 
   return (
-    <main className="app-surface flex min-h-screen flex-col bg-[#111827] text-white">
-      <header className="flex h-16 items-center gap-3 border-b border-white/10 px-4 sm:px-6">
-        <Button variant="ghost" size="icon" nativeButton={false} className="text-slate-300 hover:bg-white/10 hover:text-white" render={<Link href="/dashboard" />} aria-label="Back to dashboard"><ChevronLeft /></Button>
-        <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{signaling.room?.reference || "Support session"}</p><p className="mt-0.5 truncate text-xs text-slate-400">Room {roomId}</p></div>
-        <Badge variant="outline" className="gap-1.5 border-white/15 bg-white/5 text-slate-200"><ShieldCheck className="size-3.5 text-emerald-400" />Media: {peer.connectionState}</Badge>
-        <DropdownMenu><DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="text-slate-300 hover:bg-white/10 hover:text-white" />}><MoreHorizontal /></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onClick={copyInvite}><Copy />Copy invite link</DropdownMenuItem><DropdownMenuItem onClick={() => void document.documentElement.requestFullscreen().catch(() => toast.error("Full screen could not be started."))}><Maximize2 />Enter full screen</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
-      </header>
+    <main className="app-surface flex h-dvh min-h-[520px] flex-col overflow-hidden bg-[#202124] text-white">
+      <div className="relative min-h-0 flex-1 overflow-hidden">
+        <section className="absolute inset-0 flex min-h-0 flex-col p-2 pb-0 sm:p-3 sm:pb-0" aria-label="Call stage">
+          {error && <p role="alert" className="mx-auto mb-2 w-full max-w-2xl shrink-0 rounded-xl border border-red-400/20 bg-red-950/80 px-4 py-2.5 text-center text-sm text-red-100 shadow-xl backdrop-blur">{error}</p>}
+          <div className="relative min-h-0 flex-1 overflow-hidden rounded-2xl bg-[#303134]" data-testid="host-call-stage">
+            {admitted ? (
+              <VideoTile className="h-full min-h-0 rounded-none border-0 bg-[#303134] shadow-none" stream={peer.remoteStream} name={signaling.room?.customerName ?? "Customer"} label={peer.remoteScreenSharing ? "Customer · Presenting" : peer.connectionState === "connected" ? "Customer" : "Connecting…"} fit={peer.remoteScreenSharing ? "contain" : "cover"} testId="remote-video" />
+            ) : (
+              <WaitingTile className="h-full min-h-0 rounded-none border-0" customerName={signaling.room?.customerName} connected={signaling.status === "connected"} waiting={waitingCustomer} error={signaling.error} canAdmit={mediaReady} onDecline={() => signaling.send({ type: "decline" })} onAdmit={() => signaling.send({ type: "admit" })} />
+            )}
 
-      <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(0,1fr)_330px]">
-        <section className="flex min-h-[620px] flex-col p-4 sm:p-6">
-          {(media.error || screenShare.error || peer.error || signaling.error) && <p role="alert" className="mb-4 rounded-lg border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-200">{media.error || screenShare.error || peer.error || signaling.error}</p>}
-          <div className="grid min-h-0 flex-1 gap-4 md:grid-cols-2">
-            <VideoTile stream={screenShare.displayStream ?? media.stream} name="Alex Morgan" label={screenShare.isSharing ? "You · Presenting" : "You"} local={!screenShare.isSharing} fit={screenShare.isSharing ? "contain" : "cover"} cameraEnabled={screenShare.isSharing || media.isCameraEnabled} microphoneEnabled={media.isMicrophoneEnabled} testId="local-video" action={!mediaReady ? <Button size="sm" disabled={media.status === "requesting"} className="bg-white text-slate-950 hover:bg-slate-200" onClick={() => void media.startMedia()}><Camera />{media.status === "requesting" ? "Requesting access…" : "Start camera"}</Button> : undefined} />
-            {admitted ? <VideoTile stream={peer.remoteStream} name={signaling.room?.customerName ?? "Customer"} label={peer.remoteScreenSharing ? "Customer · Presenting" : peer.connectionState === "connected" ? "Customer" : "Connecting…"} fit={peer.remoteScreenSharing ? "contain" : "cover"} testId="remote-video" /> : <WaitingTile customerName={signaling.room?.customerName} connected={signaling.status === "connected"} waiting={waitingCustomer} error={signaling.error} canAdmit={mediaReady} onDecline={() => signaling.send({ type: "decline" })} onAdmit={() => signaling.send({ type: "admit" })} />}
+            <div className="absolute right-3 bottom-3 z-10 aspect-video w-36 sm:right-4 sm:bottom-4 sm:w-48 lg:w-56 xl:w-64">
+              <VideoTile compact className="h-full min-h-0 rounded-xl border-white/15 bg-[#3c4043] shadow-2xl shadow-black/50" stream={screenShare.displayStream ?? media.stream} name="You" label={screenShare.isSharing ? "Presenting" : "Host"} local={!screenShare.isSharing} fit={screenShare.isSharing ? "contain" : "cover"} cameraEnabled={screenShare.isSharing || media.isCameraEnabled} microphoneEnabled={media.isMicrophoneEnabled} testId="local-video" action={!mediaReady ? <Button size="xs" disabled={media.status === "requesting"} className="bg-white text-[#202124] hover:bg-slate-100" onClick={() => void media.startMedia()}><Camera />{media.status === "requesting" ? "Starting…" : "Start camera"}</Button> : undefined} />
+            </div>
           </div>
-          <div className="mt-5"><CallControls microphoneEnabled={media.isMicrophoneEnabled} cameraEnabled={media.isCameraEnabled} mediaReady={mediaReady} screenShareReady={peer.connectionState === "connected"} screenSharing={screenShare.isSharing} screenShareSupported={screenShare.supported} screenShareChanging={screenShare.isChanging} host onToggleMicrophone={media.toggleMicrophone} onToggleCamera={media.toggleCamera} onToggleScreenShare={() => { if (screenShare.isSharing) void screenShare.stopScreenShare(); else void screenShare.startScreenShare(); }} onLeave={endRoom} /></div>
         </section>
 
-        <aside className="border-t border-white/10 bg-[#172033] lg:border-t-0 lg:border-l">
-          <Tabs defaultValue="diagnostics" className="h-full gap-0">
-            <TabsList variant="line" className="h-14 w-full justify-start gap-4 border-b border-white/10 px-5 text-slate-400"><TabsTrigger value="diagnostics" className="flex-none text-slate-400 data-active:text-white">Diagnostics</TabsTrigger><TabsTrigger value="people" className="flex-none text-slate-400 data-active:text-white">People</TabsTrigger></TabsList>
-            <TabsContent value="diagnostics" className="p-5"><ConnectionDiagnostics signalingStatus={signaling.status} peer={peer} /></TabsContent>
-            <TabsContent value="people" className="p-5"><People customerName={signaling.room?.customerName} admitted={admitted} /></TabsContent>
-          </Tabs>
-        </aside>
+        {panel && (
+          <aside className="absolute inset-y-2 right-2 z-30 flex w-[calc(100%-1rem)] max-w-[380px] flex-col overflow-hidden rounded-2xl border border-black/10 bg-white text-slate-900 shadow-2xl sm:inset-y-3 sm:right-3" aria-label={panel === "diagnostics" ? "Connection diagnostics" : "People"}>
+            <div className="flex h-16 shrink-0 items-center justify-between border-b px-5">
+              <div><h2 className="text-base font-semibold">{panel === "diagnostics" ? "Connection details" : "People"}</h2><p className="text-xs text-slate-500">{panel === "diagnostics" ? "Live call quality" : "Participants in this room"}</p></div>
+              <Button variant="ghost" size="icon" aria-label="Close side panel" onClick={() => setPanel(null)}><X /></Button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-5 [&_.text-amber-400]:text-amber-600 [&_.text-emerald-300]:text-emerald-700 [&_.text-slate-200]:text-slate-700 [&_.text-slate-300]:text-slate-700 [&_.text-slate-400]:text-slate-500 [&_.border-white\/10]:border-slate-200 [&_.bg-white\/\[0\.03\]]:bg-slate-50 [&_.bg-white\/10]:bg-slate-100" data-testid={panel === "diagnostics" ? "host-diagnostics-panel" : undefined}>
+              {panel === "diagnostics" ? <ConnectionDiagnostics signalingStatus={signaling.status} peer={peer} /> : <People customerName={signaling.room?.customerName} admitted={admitted} />}
+            </div>
+          </aside>
+        )}
       </div>
+
+      <footer className="grid h-[76px] shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-2 px-3 sm:h-20 sm:px-5" aria-label="Call controls">
+        <div className="hidden min-w-0 self-center sm:block">
+          <p className="truncate text-sm font-medium text-white">{reference}</p>
+          <div className="mt-0.5 flex items-center gap-1.5 text-xs text-[#bdc1c6]"><span className={cn("size-1.5 rounded-full", peer.connectionState === "connected" ? "bg-[#81c995]" : "bg-[#fdd663]")} /><span>Media: {peer.connectionState}</span><span className="hidden md:inline">· Private room</span></div>
+        </div>
+
+        <CallControls microphoneEnabled={media.isMicrophoneEnabled} cameraEnabled={media.isCameraEnabled} mediaReady={mediaReady} screenShareReady={peer.connectionState === "connected"} screenSharing={screenShare.isSharing} screenShareSupported={screenShare.supported} screenShareChanging={screenShare.isChanging} host onToggleMicrophone={media.toggleMicrophone} onToggleCamera={media.toggleCamera} onToggleScreenShare={() => { if (screenShare.isSharing) void screenShare.stopScreenShare(); else void screenShare.startScreenShare(); }} onLeave={endRoom} />
+
+        <div className="flex min-w-0 items-center justify-end gap-1">
+          <FooterButton label="Connection diagnostics" active={panel === "diagnostics"} icon={Activity} onClick={() => setPanel((current) => current === "diagnostics" ? null : "diagnostics")} />
+          <FooterButton label="People" active={panel === "people"} icon={Users} onClick={() => setPanel((current) => current === "people" ? null : "people")} />
+          <DropdownMenu>
+            <DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="rounded-full text-[#e8eaed] hover:bg-white/10 hover:text-white" aria-label="More options" />}><MoreVertical /></DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem className="sm:hidden" onClick={() => setPanel("diagnostics")}><Activity />Connection diagnostics</DropdownMenuItem>
+              <DropdownMenuItem className="sm:hidden" onClick={() => setPanel("people")}><Users />People</DropdownMenuItem>
+              <DropdownMenuItem onClick={copyInvite}><Copy />Copy invite link</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => void document.documentElement.requestFullscreen().catch(() => toast.error("Full screen could not be started."))}><Maximize2 />Enter full screen</DropdownMenuItem>
+              <DropdownMenuItem render={<Link href="/dashboard" />}><ChevronLeft />Back to dashboard</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </footer>
     </main>
   );
 }
 
-function WaitingTile({ customerName, connected, waiting, error, canAdmit, onAdmit, onDecline }: { customerName?: string | null; connected: boolean; waiting?: boolean; error?: string | null; canAdmit: boolean; onAdmit: () => void; onDecline: () => void }) {
-  return <div className="grid min-h-[280px] place-items-center rounded-xl border border-dashed border-white/15 bg-white/[0.025] p-6 text-center"><div><span className="mx-auto grid size-14 place-items-center rounded-full bg-white/5"><UserRound className="size-6 text-slate-400" /></span><p className="mt-4 text-sm font-medium">{waiting ? `${customerName ?? "A customer"} is waiting` : connected ? "Waiting for the customer" : "Connecting to the room"}</p><p className="mt-1 text-xs text-slate-400">{error ?? (waiting ? canAdmit ? "Your camera is ready. You can admit this customer." : "Start your camera before admitting the customer." : "Share the invitation link when the room is ready.")}</p>{waiting && <div className="mt-5 flex justify-center gap-2"><Button variant="outline" onClick={onDecline} className="border-white/15 bg-transparent text-white hover:bg-white/10 hover:text-white">Decline</Button><Button disabled={!canAdmit} onClick={onAdmit} className="bg-white text-slate-950 hover:bg-slate-200"><Check />Admit</Button></div>}</div></div>;
+function FooterButton({ label, icon: Icon, active, onClick }: { label: string; icon: typeof Activity; active: boolean; onClick: () => void }) {
+  return <Tooltip><TooltipTrigger render={<Button variant="ghost" size="icon" className={cn("hidden rounded-full text-[#e8eaed] hover:bg-white/10 hover:text-white sm:inline-flex", active && "bg-[#8ab4f8]/20 text-[#8ab4f8]")} aria-label={label} onClick={onClick} />}><Icon /></TooltipTrigger><TooltipContent>{label}</TooltipContent></Tooltip>;
+}
+
+function WaitingTile({ customerName, connected, waiting, error, canAdmit, onAdmit, onDecline, className }: { customerName?: string | null; connected: boolean; waiting?: boolean; error?: string | null; canAdmit: boolean; onAdmit: () => void; onDecline: () => void; className?: string }) {
+  return <div className={cn("grid min-h-[280px] place-items-center rounded-xl bg-[#303134] p-6 text-center", className)}><div><span className="mx-auto grid size-20 place-items-center rounded-full bg-[#3c4043]"><UserRound className="size-9 text-[#bdc1c6]" /></span><p className="mt-5 text-base font-medium">{waiting ? `${customerName ?? "A customer"} is waiting` : connected ? "Waiting for the customer" : "Connecting to the room"}</p><p className="mx-auto mt-1.5 max-w-sm text-sm leading-6 text-[#bdc1c6]">{error ?? (waiting ? canAdmit ? "Your camera is ready. You can admit this customer." : "Start your camera before admitting the customer." : "Share the invitation link when the room is ready.")}</p>{waiting && <div className="mt-6 flex justify-center gap-2"><Button variant="outline" onClick={onDecline} className="border-white/20 bg-transparent text-white hover:bg-white/10 hover:text-white">Decline</Button><Button disabled={!canAdmit} onClick={onAdmit} className="bg-[#8ab4f8] text-[#202124] hover:bg-[#aecbfa]"><Check />Admit</Button></div>}</div></div>;
 }
 
 function People({ customerName, admitted }: { customerName?: string | null; admitted: boolean }) { return <div className="space-y-3"><Person name="Alex Morgan" role="Host" />{customerName && <Person name={customerName} role={admitted ? "In call" : "Waiting"} />}</div>; }
-function Person({ name, role }: { name: string; role: string }) { return <div className="flex items-center gap-3 rounded-lg border border-white/10 p-3"><span className="grid size-8 place-items-center rounded-full bg-white/10"><UserRound className="size-4" /></span><div className="flex-1"><p className="text-sm font-medium">{name}</p><p className="text-xs text-slate-400">{role}</p></div></div>; }
+function Person({ name, role }: { name: string; role: string }) { return <div className="flex items-center gap-3 rounded-xl border border-slate-200 p-3"><span className="grid size-9 place-items-center rounded-full bg-slate-100"><UserRound className="size-4 text-slate-600" /></span><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{name}</p><p className="text-xs text-slate-500">{role}</p></div></div>; }
