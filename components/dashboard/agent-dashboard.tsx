@@ -61,7 +61,7 @@ export function AgentDashboard() {
         <Card className="border shadow-sm ring-0">
           <CardHeader className="flex-row items-center justify-between border-b">
             <div><CardTitle>Recent sessions</CardTitle><CardDescription>Your latest completed calls</CardDescription></div>
-            <Button variant="ghost" render={<Link href="/sessions" />}>View all <ArrowRight /></Button>
+            <Button variant="ghost" nativeButton={false} render={<Link href="/sessions" />}>View all <ArrowRight /></Button>
           </CardHeader>
           <CardContent className="p-0">
             <Table>

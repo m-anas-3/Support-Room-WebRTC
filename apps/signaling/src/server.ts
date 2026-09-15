@@ -5,8 +5,8 @@ import { clientMessageSchema } from "@support-room/shared";
 import { RoomRegistry } from "./rooms.js";
 import { send, sendError } from "./messages.js";
 
-export function createSignalingServer(options: { allowedOrigins: string[]; roomTtlMs?: number; maxRooms?: number }) {
-  const rooms = new RoomRegistry(options.roomTtlMs, options.maxRooms);
+export function createSignalingServer(options: { allowedOrigins: string[]; roomTtlMs?: number; maxRooms?: number; hostReconnectGraceMs?: number }) {
+  const rooms = new RoomRegistry(options.roomTtlMs, options.maxRooms, options.hostReconnectGraceMs);
   const server = createServer((request, response) => {
     if (request.url === "/health") {
       response.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });

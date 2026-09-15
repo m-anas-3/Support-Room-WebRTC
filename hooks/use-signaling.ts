@@ -6,7 +6,7 @@ import { readHostRoom, signalingUrl } from "@/lib/signaling/client";
 
 type ConnectionStatus = "connecting" | "connected" | "disconnected" | "error" | "closed" | "declined";
 
-export function useSignaling({ roomId, role, name, enabled = true }: { roomId: string; role: "host" | "customer"; name: string; enabled?: boolean }) {
+export function useSignaling({ roomId, role, name, enabled = true, onDisconnect }: { roomId: string; role: "host" | "customer"; name: string; enabled?: boolean; onDisconnect?: () => void }) {
   const socketRef = useRef<WebSocket | null>(null);
   const signalListeners = useRef(new Set<(message: SignalMessage) => void>());
   const [status, setStatus] = useState<ConnectionStatus>("connecting");
@@ -15,56 +15,79 @@ export function useSignaling({ roomId, role, name, enabled = true }: { roomId: s
 
   useEffect(() => {
     if (!enabled) return;
-    const socket = new WebSocket(signalingUrl());
+    let socket: WebSocket | null = null;
+    let responseTimer: ReturnType<typeof setTimeout> | null = null;
     let joined = false;
-    socketRef.current = socket;
-    const timeout = setTimeout(() => {
-      setStatus("error");
-      setError("The signaling server did not respond. Check your connection and try again.");
-      socket.close();
-    }, 10000);
-
-    socket.onopen = () => {
-      setStatus("connecting");
-      const token = role === "host" ? readHostRoom(roomId)?.hostToken : new URLSearchParams(window.location.hash.slice(1)).get("token");
-      setRoom(null);
-      setError(null);
-      if (!token) {
-        clearTimeout(timeout);
+    const clearResponseTimer = () => { if (responseTimer) clearTimeout(responseTimer); responseTimer = null; };
+    // React development checks may set up and immediately clean up an effect.
+    // Let that cleanup cancel connection creation before it joins as the host.
+    const connectTimer = setTimeout(() => {
+      try { socket = new WebSocket(signalingUrl()); }
+      catch {
         setStatus("error");
-        setError(role === "host" ? "Create a room from the dashboard in this browser tab first." : "This invitation is missing its access token. Ask the agent for a new link.");
-        socket.close();
+        setError("The signaling server URL is invalid.");
+        onDisconnect?.();
         return;
       }
-      socket.send(JSON.stringify({ type: "join-room", roomId, token, role, name }));
-    };
-    socket.onmessage = (event) => {
-      let json: unknown;
-      try { json = JSON.parse(event.data); } catch { return; }
-      const parsed = serverMessageSchema.safeParse(json);
-      if (!parsed.success) return;
-      const message = parsed.data;
-      clearTimeout(timeout);
-      switch (message.type) {
-        case "room-state": joined = true; setRoom(message.room); setStatus("connected"); break;
-        case "error":
-          setError(message.message);
-          if (!joined) { setStatus("error"); socket.close(); }
-          break;
-        case "declined": setStatus("declined"); break;
-        case "room-closed": setStatus("closed"); setError(message.reason === "expired" ? "This room has expired." : "The support agent ended this room."); break;
-        case "offer": case "answer": case "ice-candidate":
-          signalListeners.current.forEach((listener) => listener(message));
-          break;
-      }
-    };
-    socket.onerror = () => { clearTimeout(timeout); setStatus("error"); setError("Cannot reach the signaling server. Check that it is running."); };
-    socket.onclose = () => {
-      clearTimeout(timeout);
-      setStatus((previous) => ["error", "closed", "declined"].includes(previous) ? previous : "disconnected");
-    };
+      const activeSocket = socket;
+      socketRef.current = activeSocket;
+      responseTimer = setTimeout(() => {
+        setStatus("error");
+        setError("The signaling server did not respond. Check your connection and try again.");
+        activeSocket.close();
+      }, 10000);
+      activeSocket.onopen = () => {
+        setStatus("connecting");
+        const token = role === "host" ? readHostRoom(roomId)?.hostToken : new URLSearchParams(window.location.hash.slice(1)).get("token");
+        setRoom(null);
+        setError(null);
+        if (!token) {
+          clearResponseTimer();
+          setStatus("error");
+          setError(role === "host" ? "Create a room from the dashboard in this browser tab first." : "This invitation is missing its access token. Ask the agent for a new link.");
+          activeSocket.close();
+          return;
+        }
+        activeSocket.send(JSON.stringify({ type: "join-room", roomId, token, role, name }));
+      };
+      activeSocket.onmessage = (event) => {
+        let json: unknown;
+        try { json = JSON.parse(event.data); } catch { return; }
+        const parsed = serverMessageSchema.safeParse(json);
+        if (!parsed.success) return;
+        const message = parsed.data;
+        clearResponseTimer();
+        switch (message.type) {
+          case "room-state": joined = true; setRoom(message.room); setStatus("connected"); setError(null); break;
+          case "error":
+            setError(message.message);
+            if (!joined) { setStatus("error"); activeSocket.close(); }
+            break;
+          case "declined":
+            setStatus("declined"); setRoom(null);
+            signalListeners.current.forEach((listener) => listener(message));
+            break;
+          case "room-closed":
+            setStatus("closed"); setRoom(null);
+            setError(message.reason === "expired" ? "This room has expired." : "The support agent ended this room.");
+            signalListeners.current.forEach((listener) => listener(message));
+            break;
+          case "offer": case "answer": case "ice-candidate": case "peers-ready": case "peer-left":
+            signalListeners.current.forEach((listener) => listener(message));
+            break;
+        }
+      };
+      activeSocket.onerror = () => { clearResponseTimer(); setStatus("error"); setError("Cannot reach the signaling server. Check that it is running."); };
+      activeSocket.onclose = () => {
+        clearResponseTimer();
+        onDisconnect?.();
+        setStatus((previous) => ["error", "closed", "declined"].includes(previous) ? previous : "disconnected");
+      };
+    }, 0);
     return () => {
-      clearTimeout(timeout);
+      clearTimeout(connectTimer);
+      clearResponseTimer();
+      if (!socket) return;
       socket.onopen = null;
       socket.onmessage = null;
       socket.onerror = null;
@@ -72,7 +95,7 @@ export function useSignaling({ roomId, role, name, enabled = true }: { roomId: s
       socket.close();
       if (socketRef.current === socket) socketRef.current = null;
     };
-  }, [enabled, name, role, roomId]);
+  }, [enabled, name, onDisconnect, role, roomId]);
 
   const send = useCallback((message: ClientMessage) => {
     if (socketRef.current?.readyState !== WebSocket.OPEN) {

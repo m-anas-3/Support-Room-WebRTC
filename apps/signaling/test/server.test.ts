@@ -69,7 +69,7 @@ function join(client: Inbox, room: CreatedRoom, role: "host" | "customer", token
 }
 
 beforeEach(async () => {
-  app = createSignalingServer({ allowedOrigins: [origin], roomTtlMs: 10_000 });
+  app = createSignalingServer({ allowedOrigins: [origin], roomTtlMs: 10_000, hostReconnectGraceMs: 1000 });
   await app.listen(0);
   const address = app.server.address() as AddressInfo;
   url = `ws://127.0.0.1:${address.port}/signal`;
@@ -103,6 +103,12 @@ test("creates a private room, enforces admission, and relays negotiation", async
   await customer.next("admitted");
   assert.equal((await customer.next("room-state")).room.customerState, "admitted");
 
+  host.send({ type: "offer", sdp: "offer-before-ready" });
+  assert.equal((await host.next("error")).code, "PEERS_NOT_READY");
+  host.send({ type: "peer-ready" });
+  customer.send({ type: "peer-ready" });
+  await host.next("peers-ready");
+  await customer.next("peers-ready");
   host.send({ type: "offer", sdp: "test-offer" });
   assert.equal((await customer.next("offer")).sdp, "test-offer");
   customer.send({ type: "answer", sdp: "test-answer" });
@@ -173,6 +179,10 @@ test("isolates rooms even when a sender includes another room ID", async () => {
     await customer.next("room-state");
     host.send({ type: "admit" });
     await customer.next("admitted");
+    host.send({ type: "peer-ready" });
+    customer.send({ type: "peer-ready" });
+    await host.next("peers-ready");
+    await customer.next("peers-ready");
   }
 
   firstHost.send({ type: "offer", roomId: second.roomId, sdp: "first-room-offer" });
@@ -222,4 +232,24 @@ test("expires active rooms and rejects reuse of their credentials", async () => 
   const late = await connect();
   join(late, room, "customer", room.inviteToken, "Late");
   assert.equal((await late.next("error")).code, "ROOM_UNAVAILABLE");
+});
+
+test("allows a host to rejoin during the grace period, then closes an abandoned room", async () => {
+  const host = await connect();
+  const room = await createRoom(host);
+  join(host, room, "host", room.hostToken, "Host");
+  await host.next("room-state");
+  const customer = await connect();
+  join(customer, room, "customer", room.inviteToken, "Customer");
+  await customer.next("room-state");
+
+  host.socket.terminate();
+  await customer.next("peer-left");
+  assert.equal((await customer.next("room-state", (message) => !message.room.hostConnected)).room.hostConnected, false);
+  const rejoined = await connect();
+  join(rejoined, room, "host", room.hostToken, "Host");
+  assert.equal((await rejoined.next("room-state")).room.hostConnected, true);
+
+  rejoined.socket.terminate();
+  assert.equal((await customer.next("room-closed")).reason, "host-left");
 });

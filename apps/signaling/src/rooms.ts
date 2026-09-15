@@ -14,6 +14,9 @@ type Room = {
   customer: WebSocket | null;
   customerName: string | null;
   admitted: boolean;
+  hostReady: boolean;
+  customerReady: boolean;
+  hostDisconnectTimer: ReturnType<typeof setTimeout> | null;
 };
 type Membership = { room: Room; role: "host" | "customer" };
 
@@ -27,7 +30,7 @@ export class RoomRegistry {
   private rooms = new Map<string, Room>();
   private memberships = new Map<WebSocket, Membership>();
 
-  constructor(private ttlMs = 30 * 60 * 1000, private maxRooms = 1000) {}
+  constructor(private ttlMs = 30 * 60 * 1000, private maxRooms = 1000, private hostReconnectGraceMs = 10000) {}
 
   create(requestId: string, reference: string): CreatedRoom | null {
     if (this.rooms.size >= this.maxRooms) return null;
@@ -37,6 +40,8 @@ export class RoomRegistry {
       inviteToken: randomBytes(32).toString("hex"),
       expiresAt: Date.now() + this.ttlMs,
       host: null, hostName: null, customer: null, customerName: null, admitted: false,
+      hostReady: false, customerReady: false,
+      hostDisconnectTimer: null,
     };
     this.rooms.set(room.id, room);
     return { type: "room-created", requestId, roomId: room.id, hostToken: room.hostToken, inviteToken: room.inviteToken, expiresAt: room.expiresAt };
@@ -62,6 +67,8 @@ export class RoomRegistry {
     if (!matchesToken(message.token, expectedToken)) return sendError(socket, "INVALID_TOKEN", "This invitation is invalid or has expired.");
     if (message.role === "host") {
       if (room.host) return sendError(socket, "HOST_PRESENT", "This room already has a connected host.");
+      if (room.hostDisconnectTimer) clearTimeout(room.hostDisconnectTimer);
+      room.hostDisconnectTimer = null;
       room.host = socket;
       room.hostName = message.name;
     } else {
@@ -69,6 +76,8 @@ export class RoomRegistry {
       room.customer = socket;
       room.customerName = message.name;
       room.admitted = false;
+      room.hostReady = false;
+      room.customerReady = false;
     }
     this.memberships.set(socket, { room, role: message.role });
     this.broadcast(room);
@@ -79,7 +88,7 @@ export class RoomRegistry {
     if (!membership) return sendError(socket, "NOT_JOINED", "Join a room before sending messages.");
     const { room, role } = membership;
     if (room.expiresAt <= Date.now()) return this.closeRoom(room, "expired");
-    if (message.type === "leave") return this.leave(socket);
+    if (message.type === "leave") return this.leave(socket, true);
     if (message.type === "admit" || message.type === "decline") {
       if (role !== "host") return sendError(socket, "HOST_ONLY", "Only the host can admit or decline a customer.");
       if (!room.customer || room.admitted) return sendError(socket, "NO_WAITING_CUSTOMER", "There is no waiting customer.");
@@ -97,6 +106,16 @@ export class RoomRegistry {
       return this.broadcast(room);
     }
     if (!room.admitted) return sendError(socket, "NOT_ADMITTED", "The customer must be admitted before exchanging connection details.");
+    if (message.type === "peer-ready") {
+      if (role === "host") room.hostReady = true;
+      else room.customerReady = true;
+      if (room.hostReady && room.customerReady) {
+        send(room.host, { type: "peers-ready" });
+        send(room.customer, { type: "peers-ready" });
+      }
+      return;
+    }
+    if (!room.hostReady || !room.customerReady) return sendError(socket, "PEERS_NOT_READY", "Both participants must prepare their media connection first.");
     // The host initiates the first negotiation, preventing simultaneous offers.
     if ((message.type === "offer" && role !== "host") || (message.type === "answer" && role !== "customer")) {
       return sendError(socket, "INVALID_ROLE", "This message is not allowed for your role.");
@@ -106,20 +125,35 @@ export class RoomRegistry {
     send(peer, message);
   }
 
-  leave(socket: WebSocket) {
+  leave(socket: WebSocket, intentional = false) {
     const membership = this.memberships.get(socket);
     if (!membership) return;
     const { room, role } = membership;
     this.memberships.delete(socket);
-    if (role === "host") return this.closeRoom(room, "host-left");
+    if (role === "host") {
+      if (intentional) return this.closeRoom(room, "host-left");
+      room.host = null;
+      room.admitted = false;
+      room.hostReady = false;
+      room.customerReady = false;
+      send(room.customer, { type: "peer-left" });
+      this.broadcast(room);
+      room.hostDisconnectTimer = setTimeout(() => {
+        if (!room.host && this.rooms.has(room.id)) this.closeRoom(room, "host-left");
+      }, this.hostReconnectGraceMs);
+      return;
+    }
     room.customer = null;
     room.customerName = null;
     room.admitted = false;
+    room.hostReady = false;
+    room.customerReady = false;
     send(room.host, { type: "peer-left" });
     this.broadcast(room);
   }
 
   private closeRoom(room: Room, reason: "host-left" | "expired" | "server-shutdown") {
+    if (room.hostDisconnectTimer) clearTimeout(room.hostDisconnectTimer);
     this.rooms.delete(room.id);
     for (const socket of [room.host, room.customer]) {
       if (!socket) continue;

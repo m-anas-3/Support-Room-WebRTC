@@ -51,7 +51,7 @@ export function CreateRoomDialog() {
               <Button variant="outline" size="icon" className="shrink-0" onClick={copyLink} aria-label="Copy invitation link"><Copy /></Button>
             </div>
             <DialogFooter>
-              <Button className="w-full sm:w-auto" render={<Link href={`/room/${created.roomId}`} />}><Video />Open room</Button>
+              <Button nativeButton={false} className="w-full sm:w-auto" render={<Link href={`/room/${created.roomId}`} />}><Video />Open room</Button>
             </DialogFooter>
           </>
         ) : (

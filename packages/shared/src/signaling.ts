@@ -16,6 +16,7 @@ export const clientMessageSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("join-room"), roomId, token, role: z.enum(["host", "customer"]), name }),
   z.object({ type: z.literal("admit") }),
   z.object({ type: z.literal("decline") }),
+  z.object({ type: z.literal("peer-ready") }),
   z.object({ type: z.literal("offer"), sdp: z.string().min(1).max(60000) }),
   z.object({ type: z.literal("answer"), sdp: z.string().min(1).max(60000) }),
   z.object({ type: z.literal("ice-candidate"), candidate: candidate.nullable() }),
@@ -37,6 +38,7 @@ export const serverMessageSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("admitted") }),
   z.object({ type: z.literal("declined") }),
   z.object({ type: z.literal("peer-left") }),
+  z.object({ type: z.literal("peers-ready") }),
   z.object({ type: z.literal("room-closed"), reason: z.enum(["host-left", "expired", "server-shutdown"]) }),
   z.object({ type: z.literal("offer"), sdp: z.string() }),
   z.object({ type: z.literal("answer"), sdp: z.string() }),
@@ -48,4 +50,4 @@ export type ClientMessage = z.infer<typeof clientMessageSchema>;
 export type ServerMessage = z.infer<typeof serverMessageSchema>;
 export type RoomSnapshot = z.infer<typeof roomSnapshotSchema>;
 export type CreatedRoom = Extract<ServerMessage, { type: "room-created" }>;
-export type SignalMessage = Extract<ServerMessage, { type: "offer" | "answer" | "ice-candidate" }>;
+export type SignalMessage = Extract<ServerMessage, { type: "offer" | "answer" | "ice-candidate" | "peers-ready" | "peer-left" | "room-closed" | "declined" }>;
