@@ -78,7 +78,7 @@ export function SupportCall({ roomId }: { roomId: string }) {
             )}
 
             <div className="absolute right-3 bottom-3 z-10 aspect-video w-36 sm:right-4 sm:bottom-4 sm:w-48 lg:w-56 xl:w-64">
-              <VideoTile compact className="h-full min-h-0 rounded-xl border-white/15 bg-[#3c4043] shadow-2xl shadow-black/50" stream={screenShare.displayStream ?? media.stream} name="You" label={screenShare.isSharing ? "Presenting" : "Host"} local={!screenShare.isSharing} fit={screenShare.isSharing ? "contain" : "cover"} cameraEnabled={screenShare.isSharing || media.isCameraEnabled} microphoneEnabled={media.isMicrophoneEnabled} testId="local-video" action={!mediaReady ? <Button size="xs" disabled={media.status === "requesting"} className="bg-white text-[#202124] hover:bg-slate-100" onClick={() => void media.startMedia()}><Camera />{media.status === "requesting" ? "Starting…" : "Start camera"}</Button> : undefined} />
+              <VideoTile compact className="h-full min-h-0 rounded-xl border-white/15 bg-[#3c4043] shadow-2xl shadow-black/50" stream={media.stream} name="You" label={screenShare.isSharing ? "Host · Presenting" : "Host"} local cameraEnabled={media.isCameraEnabled} microphoneEnabled={media.isMicrophoneEnabled} testId="local-video" action={!mediaReady ? <Button size="xs" disabled={media.status === "requesting"} className="bg-white text-[#202124] hover:bg-slate-100" onClick={() => void media.startMedia()}><Camera />{media.status === "requesting" ? "Starting…" : "Start camera"}</Button> : undefined} />
             </div>
           </div>
         </section>

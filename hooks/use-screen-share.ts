@@ -42,7 +42,6 @@ export function useScreenShare({
   const requestIdRef = useRef(0);
   const mountedRef = useRef(true);
   const endedListenerRef = useRef<(() => void) | null>(null);
-  const [displayStream, setDisplayStream] = useState<MediaStream | null>(null);
   const [isSharing, setIsSharing] = useState(false);
   const [isChanging, setIsChanging] = useState(false);
   const supported = useSyncExternalStore(subscribeToBrowserSupport, getScreenShareSupport, getServerScreenShareSupport);
@@ -77,7 +76,6 @@ export function useScreenShare({
       current.getTracks().forEach((track) => track.stop());
       announceRef.current(false);
       if (mountedRef.current) {
-        setDisplayStream(null);
         setIsSharing(false);
         setIsChanging(false);
       }
@@ -116,7 +114,6 @@ export function useScreenShare({
       endedListenerRef.current = ended;
       displayTrack.addEventListener("ended", ended, { once: true });
       displayStreamRef.current = nextStream;
-      setDisplayStream(nextStream);
       setIsSharing(true);
       announceRef.current(true);
     } catch (screenError) {
@@ -150,7 +147,6 @@ export function useScreenShare({
   }, []);
 
   return {
-    displayStream,
     isSharing,
     isChanging,
     supported,

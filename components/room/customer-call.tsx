@@ -33,7 +33,7 @@ export function CustomerCall({ name, hostName, localStream, remoteStream, connec
         <div className="relative h-full min-h-0 overflow-hidden rounded-2xl bg-[#303134]" data-testid="customer-call-stage">
           <VideoTile className="h-full min-h-0 rounded-none border-0 bg-[#303134] shadow-none" stream={remoteStream} name={hostName} label={remoteScreenSharing ? "Support agent · Presenting" : connectionState === "connected" ? "Support agent" : "Connecting…"} fit={remoteScreenSharing ? "contain" : "cover"} cameraEnabled={remoteScreenSharing || remoteCameraEnabled} microphoneEnabled={remoteMicrophoneEnabled} testId="remote-video" />
           <div className="absolute right-3 bottom-3 z-10 aspect-video w-36 sm:right-4 sm:bottom-4 sm:w-48 lg:w-56 xl:w-64">
-            <VideoTile compact className="h-full min-h-0 rounded-xl border-white/15 bg-[#3c4043] shadow-2xl shadow-black/50" stream={localStream} name="You" label={screenSharing ? "Presenting" : name} local={!screenSharing} fit={screenSharing ? "contain" : "cover"} cameraEnabled={screenSharing || cameraEnabled} microphoneEnabled={microphoneEnabled} testId="local-video" />
+            <VideoTile compact className="h-full min-h-0 rounded-xl border-white/15 bg-[#3c4043] shadow-2xl shadow-black/50" stream={localStream} name="You" label={screenSharing ? `${name} · Presenting` : name} local cameraEnabled={cameraEnabled} microphoneEnabled={microphoneEnabled} testId="local-video" />
           </div>
         </div>
       </section>

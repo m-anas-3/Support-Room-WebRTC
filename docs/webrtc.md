@@ -25,6 +25,8 @@ SupportRoom now connects two browser participants with native WebRTC audio and v
 
 The display stream is separate from the camera/microphone stream. This keeps ownership clear: `useLocalMedia` releases device tracks, while `useScreenShare` releases display tracks.
 
+The sharer's self tile continues to show their camera with a **Presenting** label. SupportRoom does not render the captured display back inside the tab being captured, because doing so creates the recursive screen-within-screen mirror when the user shares the current tab, browser window, or monitor.
+
 ## Device lifecycle and recovery
 
 - Turning the camera off removes its track from the local stream, calls `RTCRtpSender.replaceTrack(null)`, and stops the track so the browser can release the camera hardware.
@@ -69,7 +71,7 @@ SDP operations and incoming ICE messages are processed sequentially. Local candi
 
 ## Validation and current limits
 
-`pnpm test:signaling` checks admission, role and token enforcement, readiness, isolation, expiry, the host reconnect window, and media-state relay. `pnpm test:e2e` runs real Chromium peer connections with fake camera/microphone devices, checks inbound audio/video RTP bytes, verifies the live diagnostics panel, proves normal and rapid camera restarts resume incoming video without a new peer connection, simulates device removal and recovery, and verifies cleanup.
+`pnpm test:signaling` checks admission, role and token enforcement, readiness, isolation, expiry, the host reconnect window, and media-state relay. `pnpm test:e2e` runs real Chromium peer connections with fake camera/microphone devices, checks inbound audio/video RTP bytes, verifies the live diagnostics panel, proves normal and rapid camera restarts resume incoming video without a new peer connection, verifies screen sharing sends the display track while the local tile stays on the camera, simulates device removal and recovery, and verifies cleanup.
 
 The tests use a separate `.next-e2e` directory and local test ports. Headless Chromium receives a separate fake native video track in place of the operating-system source picker, allowing the test to verify sender replacement, state relay, camera restoration, and display-track cleanup. The tests do not establish cross-network reliability. TURN, ICE/network recovery, production identity, and persistent history remain future work.
 

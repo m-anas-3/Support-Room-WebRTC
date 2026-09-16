@@ -128,6 +128,10 @@ test("connects two real browser peers, controls tracks, and cleans up", async ({
     const peer = (window as unknown as { supportTestPeers: RTCPeerConnection[] }).supportTestPeers.at(-1)!;
     return peer.getSenders().find((sender) => sender.track?.kind === "video")?.track?.id;
   })).not.toBe(hostCameraTrackId);
+  const displayTrackId = await host.evaluate(() => (window as unknown as { supportTestDisplayStream: MediaStream }).supportTestDisplayStream.getVideoTracks()[0]?.id);
+  expect(await host.evaluate(() => (window as unknown as { supportTestPeers: RTCPeerConnection[] }).supportTestPeers.at(-1)?.getSenders().find((sender) => sender.track?.kind === "video")?.track?.id)).toBe(displayTrackId);
+  expect(await host.getByTestId("local-video").locator("video").evaluate((video) => ((video as HTMLVideoElement).srcObject as MediaStream).getVideoTracks()[0]?.id)).toBe(hostCameraTrackId);
+  await expect(host.getByTestId("local-video").getByText("Host · Presenting")).toBeVisible();
   await host.getByRole("button", { name: "Stop sharing" }).click();
   await expect(host.getByRole("button", { name: "Share screen" })).toBeVisible();
   await expect(customer.getByText("Support agent", { exact: true })).toBeVisible();
