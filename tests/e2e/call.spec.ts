@@ -68,6 +68,17 @@ async function startCall(context: BrowserContext, host: Page) {
   return customer;
 }
 
+async function inboundBytes(page: Page, kind: "audio" | "video") {
+  return page.evaluate(async (mediaKind) => {
+    const peer = (window as unknown as { supportTestPeers: RTCPeerConnection[] }).supportTestPeers.at(-1)!;
+    let bytes = 0;
+    (await peer.getStats()).forEach((stat) => {
+      if (stat.type === "inbound-rtp" && stat.kind === mediaKind) bytes += stat.bytesReceived;
+    });
+    return bytes;
+  }, kind);
+}
+
 test("connects two real browser peers, controls tracks, and cleans up", async ({ context, page: host }) => {
   const customer = await startCall(context, host);
 
@@ -144,6 +155,18 @@ test("connects two real browser peers, controls tracks, and cleans up", async ({
   await host.getByRole("button", { name: "Turn on camera" }).click();
   await expect.poll(() => host.evaluate(() => (window as unknown as { supportTestPeers: RTCPeerConnection[] }).supportTestPeers.at(-1)?.getSenders().find((sender) => sender.track?.kind === "video")?.track?.id)).not.toBe(cameraTrackBeforeStop);
   await expect(customer.getByTestId("remote-video").getByText("Camera is off")).toHaveCount(0);
+  await expect(customer.getByTestId("remote-video").locator("video")).toBeVisible();
+  const videoBytesAfterRestore = await inboundBytes(customer, "video");
+  await expect.poll(() => inboundBytes(customer, "video")).toBeGreaterThan(videoBytesAfterRestore);
+  expect(await host.evaluate(() => (window as unknown as { supportTestPeers: RTCPeerConnection[] }).supportTestPeers.length)).toBe(peerCountBeforeCameraChanges);
+
+  const cameraTrackBeforeRapidRestart = await host.evaluate(() => (window as unknown as { supportTestPeers: RTCPeerConnection[] }).supportTestPeers.at(-1)?.getSenders().find((sender) => sender.track?.kind === "video")?.track?.id);
+  await host.getByRole("button", { name: "Turn off camera" }).click();
+  await host.getByRole("button", { name: "Turn on camera" }).click();
+  await expect.poll(() => host.evaluate(() => (window as unknown as { supportTestPeers: RTCPeerConnection[] }).supportTestPeers.at(-1)?.getSenders().find((sender) => sender.track?.kind === "video")?.track?.id)).not.toBe(cameraTrackBeforeRapidRestart);
+  await expect(customer.getByTestId("remote-video").locator("video")).toBeVisible();
+  const videoBytesAfterRapidRestart = await inboundBytes(customer, "video");
+  await expect.poll(() => inboundBytes(customer, "video")).toBeGreaterThan(videoBytesAfterRapidRestart);
   expect(await host.evaluate(() => (window as unknown as { supportTestPeers: RTCPeerConnection[] }).supportTestPeers.length)).toBe(peerCountBeforeCameraChanges);
 
   const cameraTrackBeforeDisconnect = await host.getByTestId("local-video").locator("video").evaluate((video) => ((video as HTMLVideoElement).srcObject as MediaStream).getVideoTracks()[0]?.id);

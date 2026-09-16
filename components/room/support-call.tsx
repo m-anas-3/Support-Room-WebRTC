@@ -36,7 +36,7 @@ export function SupportCall({ roomId }: { roomId: string }) {
     replaceOutgoingVideoTrack: peer.replaceOutgoingVideoTrack,
     announce: (active) => { if (signaling.status === "connected") signaling.send({ type: "screen-share-state", active }); },
   });
-  useOutgoingMedia({
+  const outgoingMedia = useOutgoingMedia({
     connected: peer.connectionState === "connected",
     audioTrack: media.audioTrack,
     videoTrack: media.videoTrack,
@@ -47,7 +47,7 @@ export function SupportCall({ roomId }: { roomId: string }) {
     replaceVideoTrack: peer.replaceOutgoingVideoTrack,
     send: signaling.send,
   });
-  const error = media.error || screenShare.error || peer.error || signaling.error;
+  const error = media.error || outgoingMedia.error || screenShare.error || peer.error || signaling.error;
   const reference = signaling.room?.reference || "Support session";
 
   async function copyInvite() {

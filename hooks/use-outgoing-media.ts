@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ClientMessage } from "@support-room/shared";
 
 export function useOutgoingMedia({
@@ -24,22 +24,40 @@ export function useOutgoingMedia({
   replaceVideoTrack: (track: MediaStreamTrack | null) => Promise<void>;
   send: (message: ClientMessage) => boolean;
 }) {
+  const audioSyncIdRef = useRef(0);
+  const videoSyncIdRef = useRef(0);
+  const [audioError, setAudioError] = useState<string | null>(null);
+  const [videoError, setVideoError] = useState<string | null>(null);
+
   useEffect(() => {
     if (!connected) return;
-    void replaceAudioTrack(audioTrack).catch(() => undefined);
+    const syncId = ++audioSyncIdRef.current;
+    void replaceAudioTrack(audioTrack)
+      .then(() => { if (audioSyncIdRef.current === syncId) setAudioError(null); })
+      .catch(() => { if (audioSyncIdRef.current === syncId) setAudioError("Your microphone could not be sent. Select the microphone again or rejoin the call."); });
+    return () => { if (audioSyncIdRef.current === syncId) audioSyncIdRef.current += 1; };
   }, [audioTrack, connected, replaceAudioTrack]);
 
   useEffect(() => {
-    if (!connected || videoOverrideActive) return;
-    void replaceVideoTrack(videoTrack).catch(() => undefined);
-  }, [connected, replaceVideoTrack, videoOverrideActive, videoTrack]);
-
-  useEffect(() => {
     if (!connected) return;
-    send({
-      type: "media-state",
-      camera: videoOverrideActive || cameraEnabled,
-      microphone: microphoneEnabled,
-    });
-  }, [cameraEnabled, connected, microphoneEnabled, send, videoOverrideActive]);
+    const syncId = ++videoSyncIdRef.current;
+    void (async () => {
+      try {
+        if (!videoOverrideActive) await replaceVideoTrack(videoTrack);
+        if (videoSyncIdRef.current !== syncId) return;
+        const sent = send({
+          type: "media-state",
+          camera: videoOverrideActive || cameraEnabled,
+          microphone: microphoneEnabled,
+        });
+        if (!sent) throw new Error("Signaling is unavailable.");
+        setVideoError(null);
+      } catch {
+        if (videoSyncIdRef.current === syncId) setVideoError("Your camera could not be sent. Turn it off and on again, or rejoin the call.");
+      }
+    })();
+    return () => { if (videoSyncIdRef.current === syncId) videoSyncIdRef.current += 1; };
+  }, [cameraEnabled, connected, microphoneEnabled, replaceVideoTrack, send, videoOverrideActive, videoTrack]);
+
+  return { error: videoError || audioError };
 }

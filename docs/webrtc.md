@@ -29,6 +29,9 @@ The display stream is separate from the camera/microphone stream. This keeps own
 
 - Turning the camera off removes its track from the local stream, calls `RTCRtpSender.replaceTrack(null)`, and stops the track so the browser can release the camera hardware.
 - Turning the camera back on requests a new video-only track and attaches it to the existing sender with `replaceTrack()`. The peer connection, microphone, and selected ICE route remain in place.
+- Video and audio replacements are serialized so camera-off, camera-on, recovery, and screen-sharing operations cannot overwrite one another out of order. The remote media state is announced only after the matching sender replacement succeeds.
+- A transient sender replacement failure is retried once. A persistent failure is shown in the call instead of leaving the local preview on while silently sending no video.
+- Remote video listens for the receiver track's `mute` and `unmute` events. It shows a reconnecting state while frames are unavailable and explicitly resumes playback when media starts flowing again.
 - Microphone mute remains a soft mute through `track.enabled = false`. This provides immediate unmute while sending silence instead of microphone samples.
 - Camera and microphone `ended` events are handled separately. If one device is unplugged, the other track and the call remain active while the app tries the selected device and then the system default.
 - `devicechange` refreshes the available device list and retries a wanted device that was previously unavailable.
@@ -66,7 +69,7 @@ SDP operations and incoming ICE messages are processed sequentially. Local candi
 
 ## Validation and current limits
 
-`pnpm test:signaling` checks admission, role and token enforcement, readiness, isolation, expiry, the host reconnect window, and media-state relay. `pnpm test:e2e` runs real Chromium peer connections with fake camera/microphone devices, checks inbound audio/video RTP bytes, verifies the live diagnostics panel, proves camera capture can stop and resume without a new peer connection, simulates device removal and recovery, and verifies cleanup.
+`pnpm test:signaling` checks admission, role and token enforcement, readiness, isolation, expiry, the host reconnect window, and media-state relay. `pnpm test:e2e` runs real Chromium peer connections with fake camera/microphone devices, checks inbound audio/video RTP bytes, verifies the live diagnostics panel, proves normal and rapid camera restarts resume incoming video without a new peer connection, simulates device removal and recovery, and verifies cleanup.
 
 The tests use a separate `.next-e2e` directory and local test ports. Headless Chromium receives a separate fake native video track in place of the operating-system source picker, allowing the test to verify sender replacement, state relay, camera restoration, and display-track cleanup. The tests do not establish cross-network reliability. TURN, ICE/network recovery, production identity, and persistent history remain future work.
 
@@ -82,6 +85,7 @@ The tests use a separate `.next-e2e` directory and local test ports. Headless Ch
 - [MDN: getDisplayMedia](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getDisplayMedia)
 - [MDN: replaceTrack](https://developer.mozilla.org/en-US/docs/Web/API/RTCRtpSender/replaceTrack)
 - [MDN: MediaStreamTrack ended event](https://developer.mozilla.org/en-US/docs/Web/API/MediaStreamTrack/ended_event)
+- [MDN: MediaStreamTrack mute event](https://developer.mozilla.org/en-US/docs/Web/API/MediaStreamTrack/mute_event)
 - [W3C: WebRTC Statistics API](https://www.w3.org/TR/webrtc-stats/)
 - [MDN: RTCPeerConnection.getStats](https://developer.mozilla.org/en-US/docs/Web/API/RTCPeerConnection/getStats)
 - [Official WebRTC peer connection sample](https://webrtc.github.io/samples/src/content/peerconnection/pc1/)
