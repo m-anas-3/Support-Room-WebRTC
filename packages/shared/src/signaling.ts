@@ -20,6 +20,7 @@ export const clientMessageSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("offer"), sdp: z.string().min(1).max(60000) }),
   z.object({ type: z.literal("answer"), sdp: z.string().min(1).max(60000) }),
   z.object({ type: z.literal("ice-candidate"), candidate: candidate.nullable() }),
+  z.object({ type: z.literal("ice-restart-request") }),
   z.object({ type: z.literal("screen-share-state"), active: z.boolean() }),
   z.object({ type: z.literal("media-state"), camera: z.boolean(), microphone: z.boolean() }),
   z.object({ type: z.literal("leave") }),
@@ -45,6 +46,7 @@ export const serverMessageSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("offer"), sdp: z.string() }),
   z.object({ type: z.literal("answer"), sdp: z.string() }),
   z.object({ type: z.literal("ice-candidate"), candidate: candidate.nullable() }),
+  z.object({ type: z.literal("ice-restart-request") }),
   z.object({ type: z.literal("screen-share-state"), active: z.boolean() }),
   z.object({ type: z.literal("media-state"), camera: z.boolean(), microphone: z.boolean() }),
   z.object({ type: z.literal("error"), code: z.string(), message: z.string() }),
@@ -54,4 +56,4 @@ export type ClientMessage = z.infer<typeof clientMessageSchema>;
 export type ServerMessage = z.infer<typeof serverMessageSchema>;
 export type RoomSnapshot = z.infer<typeof roomSnapshotSchema>;
 export type CreatedRoom = Extract<ServerMessage, { type: "room-created" }>;
-export type SignalMessage = Extract<ServerMessage, { type: "offer" | "answer" | "ice-candidate" | "screen-share-state" | "media-state" | "peers-ready" | "peer-left" | "room-closed" | "declined" }>;
+export type SignalMessage = Extract<ServerMessage, { type: "offer" | "answer" | "ice-candidate" | "ice-restart-request" | "screen-share-state" | "media-state" | "peers-ready" | "peer-left" | "room-closed" | "declined" }>;

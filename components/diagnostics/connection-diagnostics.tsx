@@ -8,6 +8,8 @@ type PeerState = {
   iceConnectionState: string;
   iceGatheringState: string;
   signalingState: string;
+  recoveryState: "idle" | "reconnecting" | "recovered";
+  recoveryAttempts: number;
   remoteStream: MediaStream | null;
   diagnostics: PeerDiagnostics;
 };
@@ -51,6 +53,7 @@ export function ConnectionDiagnostics({ signalingStatus, peer }: { signalingStat
       <InfoRow label="SDP state" value={peer.signalingState} />
       <InfoRow label="ICE gathering" value={peer.iceGatheringState} />
       <InfoRow label="ICE connection" value={peer.iceConnectionState} />
+      <InfoRow label="Recovery" value={recoveryLabel(peer.recoveryState, peer.recoveryAttempts)} testId="diagnostic-recovery" />
       <InfoRow label="Remote tracks" value={String(peer.remoteStream?.getTracks().length ?? 0)} />
       <InfoRow label="Last sample" value={formatSampleTime(stats.sampledAt)} />
     </div>
@@ -60,6 +63,12 @@ export function ConnectionDiagnostics({ signalingStatus, peer }: { signalingStat
       <p className="mt-1.5 text-xs leading-5 text-slate-400">Statistics refresh every two seconds. Short changes between samples may not appear.</p>
     </div>
   </div>;
+}
+
+function recoveryLabel(state: PeerState["recoveryState"], attempts: number) {
+  if (state === "reconnecting") return `Reconnecting · attempt ${attempts || 1} of 2`;
+  if (state === "recovered") return `Recovered after ${attempts} ${attempts === 1 ? "attempt" : "attempts"}`;
+  return "Not needed";
 }
 
 function Diagnostic({ label, value, testId }: { label: string; value: string; testId: string }) {

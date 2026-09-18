@@ -6,6 +6,8 @@ export type PeerConnectionSnapshot = {
   iceConnectionState: RTCIceConnectionState | "idle";
   iceGatheringState: RTCIceGatheringState | "idle";
   signalingState: RTCSignalingState | "idle";
+  recoveryState: "idle" | "reconnecting" | "recovered";
+  recoveryAttempts: number;
   remoteStream: MediaStream | null;
   remoteScreenSharing: boolean;
   remoteCameraEnabled: boolean;
@@ -17,6 +19,7 @@ export type PeerConnectionSnapshot = {
 const initialSnapshot: PeerConnectionSnapshot = {
   connectionState: "idle", iceConnectionState: "idle",
   iceGatheringState: "idle", signalingState: "idle",
+  recoveryState: "idle", recoveryAttempts: 0,
   remoteStream: null, remoteScreenSharing: false, remoteCameraEnabled: true,
   remoteMicrophoneEnabled: true, diagnostics: emptyPeerDiagnostics, error: null,
 };
@@ -87,7 +90,7 @@ export class PeerConnectionStore {
       pc = new RTCPeerConnection(resolvedConfiguration);
     }
     catch {
-      this.publish({ ...initialSnapshot, connectionState: "failed", error: "Could not create a WebRTC connection. Check browser support and STUN configuration." });
+      this.publish({ ...initialSnapshot, connectionState: "failed", error: "Could not create a WebRTC connection. Check browser support and ICE server configuration." });
       return () => undefined;
     }
 
@@ -105,6 +108,13 @@ export class PeerConnectionStore {
     let diagnosticsHistory: DiagnosticsHistory = new Map();
     let diagnosticsPending = false;
     let diagnosticsTimer: ReturnType<typeof setInterval> | null = null;
+    let disconnectedTimer: ReturnType<typeof setTimeout> | null = null;
+    let recoveryTimer: ReturnType<typeof setTimeout> | null = null;
+    let recoveryState: PeerConnectionSnapshot["recoveryState"] = "idle";
+    let recoveryAttempts = 0;
+    let recoveryRequestPending = false;
+    let restartScheduled = false;
+    let negotiationCount = 0;
     const remoteStream = new MediaStream();
     const remoteCandidates: SerializedCandidate[] = [];
     const localCandidates: SerializedCandidate[] = [];
@@ -116,6 +126,8 @@ export class PeerConnectionStore {
         iceConnectionState: pc.iceConnectionState,
         iceGatheringState: pc.iceGatheringState,
         signalingState: pc.signalingState,
+        recoveryState,
+        recoveryAttempts,
         remoteStream: remoteStream.getTracks().length ? remoteStream : null,
         remoteScreenSharing,
         remoteCameraEnabled,
@@ -147,7 +159,9 @@ export class PeerConnectionStore {
       disposed = true;
       if (this.replaceVideoTrack === replaceVideoTrack) this.replaceVideoTrack = null;
       if (this.replaceAudioTrack === replaceAudioTrack) this.replaceAudioTrack = null;
-      clearTimeout(timeout);
+      clearTimeout(initialConnectionTimer);
+      if (disconnectedTimer) clearTimeout(disconnectedTimer);
+      if (recoveryTimer) clearTimeout(recoveryTimer);
       if (diagnosticsTimer) clearInterval(diagnosticsTimer);
       unsubscribe();
       pc.onicecandidate = null;
@@ -170,7 +184,7 @@ export class PeerConnectionStore {
       dispose();
       this.publish({ ...initialSnapshot, connectionState: "failed", error: message });
     };
-    const timeout = setTimeout(() => fail("The media connection timed out. Leave and rejoin; some networks require a TURN relay."), 30000);
+    const initialConnectionTimer = setTimeout(() => fail("The media connection timed out. Check the TURN configuration and try again."), 30000);
     this.dispose = dispose;
 
     const replaceVideoTrack = async (track: MediaStreamTrack | null) => {
@@ -219,6 +233,88 @@ export class PeerConnectionStore {
       for (const candidate of remoteCandidates.splice(0)) await addRemoteCandidate(candidate);
     };
 
+    const prepareLocalDescription = () => {
+      descriptionSent = false;
+      localCandidates.length = 0;
+    };
+
+    const markConnectionUsable = () => {
+      clearTimeout(initialConnectionTimer);
+      if (disconnectedTimer) clearTimeout(disconnectedTimer);
+      if (recoveryTimer) clearTimeout(recoveryTimer);
+      disconnectedTimer = null;
+      recoveryTimer = null;
+      recoveryRequestPending = false;
+      recoveryState = recoveryAttempts > 0 ? "recovered" : "idle";
+    };
+
+    const armRecoveryTimer = () => {
+      if (recoveryTimer) clearTimeout(recoveryTimer);
+      recoveryTimer = setTimeout(() => {
+        recoveryTimer = null;
+        if (disposed) return;
+        if (pc.connectionState === "connected" || ["connected", "completed"].includes(pc.iceConnectionState)) {
+          markConnectionUsable();
+          update();
+          return;
+        }
+        recoveryRequestPending = false;
+        beginRecovery();
+      }, 10000);
+    };
+
+    const createAndSendOffer = async (iceRestart: boolean) => {
+      if (disposed || role !== "host") return;
+      if (pc.signalingState !== "stable") throw new Error("The connection is already negotiating.");
+      prepareLocalDescription();
+      if (iceRestart) pc.restartIce();
+      const offer = await pc.createOffer(iceRestart ? { iceRestart: true } : undefined);
+      if (disposed) return;
+      await pc.setLocalDescription(offer);
+      postDescription("offer");
+      negotiationCount += 1;
+    };
+
+    const runHostRecovery = async (force: boolean) => {
+      restartScheduled = false;
+      if (disposed || (!force && pc.connectionState === "connected")) return;
+      if (recoveryAttempts >= 2) return fail("The media connection could not be restored. Check the network or TURN service, then rejoin the room.");
+      recoveryAttempts += 1;
+      recoveryState = "reconnecting";
+      update();
+      await createAndSendOffer(true);
+      armRecoveryTimer();
+    };
+
+    const queueHostRecovery = (force = false) => {
+      if (disposed || restartScheduled || recoveryTimer || (!force && pc.connectionState === "connected")) return;
+      restartScheduled = true;
+      handling = handling.then(() => runHostRecovery(force)).catch(() => {
+        restartScheduled = false;
+        fail("Could not restart the media connection. Check the network or TURN service, then rejoin the room.");
+      });
+    };
+
+    function beginRecovery() {
+      if (disposed || pc.connectionState === "connected") return;
+      if (recoveryAttempts >= 2) return fail("The media connection could not be restored. Check the network or TURN service, then rejoin the room.");
+      recoveryState = "reconnecting";
+      update();
+      if (role === "host") {
+        queueHostRecovery(true);
+        return;
+      }
+      if (recoveryRequestPending) return;
+      recoveryRequestPending = true;
+      recoveryAttempts += 1;
+      try {
+        post({ type: "ice-restart-request" });
+        armRecoveryTimer();
+      } catch {
+        fail("Could not request connection recovery because signaling is unavailable.");
+      }
+    }
+
     pc.onicecandidate = ({ candidate }) => {
       if (disposed) return;
       const candidateJson = candidate?.toJSON();
@@ -238,13 +334,29 @@ export class PeerConnectionStore {
     };
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === "connected") {
-        clearTimeout(timeout);
+        markConnectionUsable();
         void pollDiagnostics();
       }
-      if (pc.connectionState === "failed") return fail("The media connection failed. Leave and rejoin; a TURN relay may be needed on this network.");
+      if (pc.connectionState === "failed") beginRecovery();
       update();
     };
-    pc.oniceconnectionstatechange = update;
+    pc.oniceconnectionstatechange = () => {
+      if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
+        markConnectionUsable();
+        void pollDiagnostics();
+      }
+      if (pc.iceConnectionState === "disconnected" && !disconnectedTimer) {
+        disconnectedTimer = setTimeout(() => {
+          disconnectedTimer = null;
+          if (pc.iceConnectionState === "disconnected" || pc.iceConnectionState === "failed") beginRecovery();
+        }, 4000);
+      } else if (pc.iceConnectionState !== "disconnected" && disconnectedTimer) {
+        clearTimeout(disconnectedTimer);
+        disconnectedTimer = null;
+      }
+      if (pc.iceConnectionState === "failed") beginRecovery();
+      update();
+    };
     pc.onicegatheringstatechange = update;
     pc.onsignalingstatechange = update;
 
@@ -254,22 +366,29 @@ export class PeerConnectionStore {
         case "peers-ready": {
           if (role !== "host" || offerStarted) return;
           offerStarted = true;
-          const offer = await pc.createOffer();
-          if (disposed) return;
-          await pc.setLocalDescription(offer);
-          postDescription("offer");
+          await createAndSendOffer(false);
           break;
         }
         case "offer": {
           if (role !== "customer" || pc.signalingState !== "stable") return;
+          const isRecoveryOffer = negotiationCount > 0 || recoveryState === "reconnecting";
+          if (isRecoveryOffer) {
+            recoveryState = "reconnecting";
+            recoveryAttempts = Math.max(1, recoveryAttempts);
+            recoveryRequestPending = false;
+            update();
+          }
           await pc.setRemoteDescription({ type: "offer", sdp: message.sdp });
           if (disposed) return;
           await flushRemoteCandidates();
           if (disposed) return;
+          prepareLocalDescription();
           const answer = await pc.createAnswer();
           if (disposed) return;
           await pc.setLocalDescription(answer);
           postDescription("answer");
+          negotiationCount += 1;
+          if (isRecoveryOffer) armRecoveryTimer();
           break;
         }
         case "answer": {
@@ -279,6 +398,9 @@ export class PeerConnectionStore {
           await flushRemoteCandidates();
           break;
         }
+        case "ice-restart-request":
+          if (role === "host") queueHostRecovery(true);
+          break;
         case "ice-candidate":
           if (!pc.remoteDescription) {
             if (remoteCandidates.length >= 256) throw new Error("Too many pending candidates.");

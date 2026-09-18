@@ -116,6 +116,12 @@ export class RoomRegistry {
       return;
     }
     if (!room.hostReady || !room.customerReady) return sendError(socket, "PEERS_NOT_READY", "Both participants must prepare their media connection first.");
+    if (message.type === "ice-restart-request") {
+      if (role !== "customer") return sendError(socket, "INVALID_ROLE", "Only the answering peer can request an ICE restart.");
+      if (!room.host || room.host.readyState !== WebSocket.OPEN) return sendError(socket, "PEER_UNAVAILABLE", "The other participant is disconnected.");
+      send(room.host, message);
+      return;
+    }
     // The host initiates the first negotiation, preventing simultaneous offers.
     if ((message.type === "offer" && role !== "host") || (message.type === "answer" && role !== "customer")) {
       return sendError(socket, "INVALID_ROLE", "This message is not allowed for your role.");

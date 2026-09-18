@@ -43,4 +43,4 @@ pnpm build:signaling
 pnpm exec next build --webpack
 ```
 
-The browser tests use fake media devices and separate test servers on ports 3100 and 8081. Camera and microphone removal now recover independently without rebuilding the call. Calls across restricted networks may still require TURN, which is not configured yet. ICE/network recovery, Supabase authentication, and persistent history are subsequent milestones.
+The browser tests use fake media devices and separate test servers on ports 3100 and 8081. Camera and microphone removal recover independently without rebuilding the call. TURN servers can be configured through the documented environment variables, and failed ICE paths use host-led restart offers with two controlled recovery attempts. A real TURN deployment still requires cross-network testing. Supabase authentication and persistent history are subsequent milestones.

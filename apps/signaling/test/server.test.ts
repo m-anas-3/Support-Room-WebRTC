@@ -117,6 +117,10 @@ test("creates a private room, enforces admission, and relays negotiation", async
   assert.equal((await customer.next("ice-candidate")).candidate, null);
   customer.send({ type: "screen-share-state", active: true });
   assert.equal((await host.next("screen-share-state")).active, true);
+  customer.send({ type: "ice-restart-request" });
+  assert.equal((await host.next("ice-restart-request")).type, "ice-restart-request");
+  host.send({ type: "ice-restart-request" });
+  assert.equal((await host.next("error")).code, "INVALID_ROLE");
   host.send({ type: "media-state", camera: false, microphone: true });
   assert.deepEqual(await customer.next("media-state"), { type: "media-state", camera: false, microphone: true });
 });
@@ -141,6 +145,7 @@ test("rejects invalid credentials, duplicate customers, and unauthorized roles",
   assert.equal((await extra.next("error")).code, "ROOM_FULL");
   customer.send({ type: "admit" });
   assert.equal((await customer.next("error")).code, "HOST_ONLY");
+
 });
 
 test("closes the room when the host leaves and rejects disallowed origins", async () => {
