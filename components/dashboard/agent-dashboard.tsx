@@ -1,3 +1,5 @@
+"use client";
+
 import Link from "next/link";
 import { ArrowRight, Clock3, Link2, Signal, Users } from "lucide-react";
 
@@ -9,6 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Progress } from "@/components/ui/progress";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { CreateRoomDialog } from "./create-room-dialog";
+import { useAgentIdentity } from "@/components/auth/agent-identity";
 
 const sessions = [
   { name: "Maya Chen", initials: "MC", topic: "Checkout camera review", time: "10:42", duration: "18m", quality: "Excellent", dot: "bg-emerald-500" },
@@ -17,11 +20,12 @@ const sessions = [
 ];
 
 export function AgentDashboard() {
+  const agent = useAgentIdentity();
   return (
     <AppShell title="Overview" description="Monday, September 14" actions={<CreateRoomDialog />}>
       <div className="mx-auto w-full max-w-6xl space-y-6">
         <section className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
-          <div><p className="font-medium text-primary">Agent workspace</p><h2 className="mt-1.5 text-[1.75rem] font-semibold leading-tight sm:text-[2rem]">Good afternoon, Alex</h2><p className="mt-2 text-muted-foreground">Everything is ready for your next support call.</p></div>
+          <div><p className="font-medium text-primary">Agent workspace</p><h2 className="mt-1.5 text-[1.75rem] font-semibold leading-tight sm:text-[2rem]">Welcome back, {agent.name}</h2><p className="mt-2 text-muted-foreground">Everything is ready for your next support call.</p></div>
         </section>
 
         <section className="grid gap-4 md:grid-cols-3">

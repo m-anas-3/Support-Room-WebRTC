@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { ReactNode } from "react";
+import { useTransition, type ReactNode } from "react";
 import {
   Activity,
   ChevronsUpDown,
@@ -16,6 +16,8 @@ import {
 } from "lucide-react";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { useAgentIdentity } from "@/components/auth/agent-identity";
+import { signOut } from "@/app/login/actions";
 import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
@@ -52,6 +54,8 @@ const primaryNav = [
 
 export function AppShell({ title, description, actions, children }: { title: string; description?: string; actions?: ReactNode; children: ReactNode }) {
   const pathname = usePathname();
+  const agent = useAgentIdentity();
+  const [signingOut, startSignOut] = useTransition();
 
   return (
     <SidebarProvider className="app-surface">
@@ -89,17 +93,17 @@ export function AppShell({ title, description, actions, children }: { title: str
             <SidebarMenuItem>
               <DropdownMenu>
                 <DropdownMenuTrigger render={<SidebarMenuButton size="lg" className="h-12" />}>
-                  <Avatar size="sm"><AvatarFallback className="bg-primary/10 text-xs font-semibold text-primary">AM</AvatarFallback></Avatar>
-                  <span className="grid flex-1 text-left text-xs leading-tight"><span className="truncate font-medium">Alex Morgan</span><span className="truncate text-muted-foreground">Support agent</span></span>
+                  <Avatar size="sm"><AvatarFallback className="bg-primary/10 text-xs font-semibold text-primary">{agent.initials}</AvatarFallback></Avatar>
+                  <span className="grid flex-1 text-left text-xs leading-tight"><span className="truncate font-medium">{agent.name}</span><span className="truncate text-muted-foreground">Support agent</span></span>
                   <ChevronsUpDown className="ml-auto size-3.5" />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent side="top" align="start" className="w-56">
-                  <DropdownMenuLabel>alex@supportroom.dev</DropdownMenuLabel>
+                  <DropdownMenuLabel>{agent.email}</DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem render={<Link href="/settings" />}><Settings />Account settings</DropdownMenuItem>
                   <DropdownMenuItem><CircleHelp />Help center</DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem variant="destructive" render={<Link href="/login" />}><LogOut />Sign out</DropdownMenuItem>
+                  <DropdownMenuItem variant="destructive" disabled={signingOut} onClick={() => startSignOut(() => { void signOut(); })}><LogOut />{signingOut ? "Signing out…" : "Sign out"}</DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             </SidebarMenuItem>

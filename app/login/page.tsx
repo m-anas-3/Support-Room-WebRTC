@@ -1,16 +1,16 @@
-import Link from "next/link";
-import { ArrowRight, LockKeyhole } from "lucide-react";
+import { LockKeyhole } from "lucide-react";
 
+import { LoginForm } from "@/components/auth/login-form";
 import { Brand } from "@/components/layout/brand";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
 
-export default function LoginPage() {
+export default async function LoginPage({ searchParams }: PageProps<"/login">) {
+  const params = await searchParams;
+  const nextPath = typeof params.next === "string" ? params.next : undefined;
+  const configurationMissing = params.configuration === "missing" || !isSupabaseConfigured();
+
   return (
     <main className="app-surface grid min-h-screen bg-[#f7f8fa] lg:grid-cols-[1fr_440px]">
       <section className="hidden border-r bg-[#182237] p-10 text-white lg:flex lg:flex-col">
@@ -30,14 +30,7 @@ export default function LoginPage() {
           <Card className="border shadow-sm ring-0">
             <CardHeader><CardTitle className="text-2xl leading-tight">Sign in to your workspace</CardTitle><CardDescription className="mt-1">Use your agent account to continue.</CardDescription></CardHeader>
             <CardContent>
-              <form className="space-y-5">
-                <FieldGroup>
-                  <Field><FieldLabel htmlFor="email">Work email</FieldLabel><Input id="email" type="email" placeholder="alex@company.com" autoComplete="email" /></Field>
-                  <Field><div className="flex items-center justify-between"><FieldLabel htmlFor="password">Password</FieldLabel><Link href="#" className="text-xs font-medium text-primary hover:underline">Forgot password?</Link></div><Input id="password" type="password" placeholder="Enter your password" autoComplete="current-password" /></Field>
-                </FieldGroup>
-                <div className="flex items-center gap-2"><Checkbox id="remember" /><Label htmlFor="remember" className="font-normal text-muted-foreground">Keep me signed in</Label></div>
-                <Button className="h-10 w-full" render={<Link href="/dashboard" />}>Sign in <ArrowRight /></Button>
-              </form>
+              <LoginForm nextPath={nextPath} configurationMissing={configurationMissing} />
               <Alert className="mt-5 bg-muted/35"><LockKeyhole /><AlertDescription>Your organization manages access through Supabase authentication.</AlertDescription></Alert>
             </CardContent>
           </Card>

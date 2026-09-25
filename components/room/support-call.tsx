@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Activity, Camera, Check, ChevronLeft, Copy, Maximize2, MoreVertical, Users, UserRound, X } from "lucide-react";
 import { toast } from "sonner";
 import { ConnectionDiagnostics } from "@/components/diagnostics/connection-diagnostics";
+import { useAgentIdentity } from "@/components/auth/agent-identity";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -23,9 +24,10 @@ type Panel = "diagnostics" | "people" | null;
 
 export function SupportCall({ roomId }: { roomId: string }) {
   const router = useRouter();
+  const agent = useAgentIdentity();
   const [panel, setPanel] = useState<Panel>(null);
   const media = useLocalMedia();
-  const signaling = useSignaling({ roomId, role: "host", name: "Alex Morgan", onDisconnect: media.stopMedia });
+  const signaling = useSignaling({ roomId, role: "host", name: agent.name, onDisconnect: media.stopMedia });
   const admitted = signaling.room?.customerState === "admitted";
   const waitingCustomer = signaling.room?.customerState === "waiting";
   const mediaReady = media.status === "ready" && Boolean(media.stream);
@@ -90,7 +92,7 @@ export function SupportCall({ roomId }: { roomId: string }) {
               <Button variant="ghost" size="icon" aria-label="Close side panel" onClick={() => setPanel(null)}><X /></Button>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-5 [&_.text-amber-400]:text-amber-600 [&_.text-emerald-300]:text-emerald-700 [&_.text-slate-200]:text-slate-700 [&_.text-slate-300]:text-slate-700 [&_.text-slate-400]:text-slate-500 [&_.border-white\/10]:border-slate-200 [&_.bg-white\/\[0\.03\]]:bg-slate-50 [&_.bg-white\/10]:bg-slate-100" data-testid={panel === "diagnostics" ? "host-diagnostics-panel" : undefined}>
-              {panel === "diagnostics" ? <ConnectionDiagnostics signalingStatus={signaling.status} peer={peer} /> : <People customerName={signaling.room?.customerName} admitted={admitted} />}
+              {panel === "diagnostics" ? <ConnectionDiagnostics signalingStatus={signaling.status} peer={peer} /> : <People hostName={agent.name} customerName={signaling.room?.customerName} admitted={admitted} />}
             </div>
           </aside>
         )}
@@ -131,5 +133,5 @@ function WaitingTile({ customerName, connected, waiting, error, canAdmit, onAdmi
   return <div className={cn("grid min-h-[280px] place-items-center rounded-xl bg-[#303134] p-6 text-center", className)}><div><span className="mx-auto grid size-20 place-items-center rounded-full bg-[#3c4043]"><UserRound className="size-9 text-[#bdc1c6]" /></span><p className="mt-5 text-base font-medium">{waiting ? `${customerName ?? "A customer"} is waiting` : connected ? "Waiting for the customer" : "Connecting to the room"}</p><p className="mx-auto mt-1.5 max-w-sm text-sm leading-6 text-[#bdc1c6]">{error ?? (waiting ? canAdmit ? "Your camera is ready. You can admit this customer." : "Start your camera before admitting the customer." : "Share the invitation link when the room is ready.")}</p>{waiting && <div className="mt-6 flex justify-center gap-2"><Button variant="outline" onClick={onDecline} className="border-white/20 bg-transparent text-white hover:bg-white/10 hover:text-white">Decline</Button><Button disabled={!canAdmit} onClick={onAdmit} className="bg-[#8ab4f8] text-[#202124] hover:bg-[#aecbfa]"><Check />Admit</Button></div>}</div></div>;
 }
 
-function People({ customerName, admitted }: { customerName?: string | null; admitted: boolean }) { return <div className="space-y-3"><Person name="Alex Morgan" role="Host" />{customerName && <Person name={customerName} role={admitted ? "In call" : "Waiting"} />}</div>; }
+function People({ hostName, customerName, admitted }: { hostName: string; customerName?: string | null; admitted: boolean }) { return <div className="space-y-3"><Person name={hostName} role="Host" />{customerName && <Person name={customerName} role={admitted ? "In call" : "Waiting"} />}</div>; }
 function Person({ name, role }: { name: string; role: string }) { return <div className="flex items-center gap-3 rounded-xl border border-slate-200 p-3"><span className="grid size-9 place-items-center rounded-full bg-slate-100"><UserRound className="size-4 text-slate-600" /></span><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{name}</p><p className="text-xs text-slate-500">{role}</p></div></div>; }

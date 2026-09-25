@@ -12,8 +12,10 @@ import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useLocalMedia } from "@/hooks/use-local-media";
+import { useAgentIdentity } from "@/components/auth/agent-identity";
 
 export function DevicePlayground() {
+  const agent = useAgentIdentity();
   const videoRef = useRef<HTMLVideoElement>(null);
   const [selectedSpeakerId, setSelectedSpeakerId] = useState("default");
   const {
@@ -60,7 +62,7 @@ export function DevicePlayground() {
               <div className="relative aspect-video overflow-hidden rounded-lg bg-[#202b3d]">
                 <video ref={videoRef} autoPlay muted playsInline className={`h-full w-full object-cover [transform:scaleX(-1)] ${!isReady || !isCameraEnabled ? "invisible" : ""}`} />
                 {(!isReady || !isCameraEnabled) && <div className="absolute inset-0 grid place-items-center p-6 text-center text-slate-300"><div>{isRequesting ? <Loader2 className="mx-auto size-8 animate-spin" /> : <VideoOff className="mx-auto size-8" />}<p className="mt-3 text-sm">{isRequesting ? "Allow camera and microphone access in your browser" : isReady ? "Camera is off" : "Start your device preview"}</p>{!isReady && !isRequesting && <Button className="mt-5 bg-white text-slate-950 hover:bg-slate-100" onClick={() => void startMedia()}><Camera />Start device check</Button>}</div></div>}
-                {isReady && <div className="absolute bottom-3 left-3 flex items-center gap-2 rounded-md bg-black/45 px-2.5 py-1.5 text-xs text-white backdrop-blur"><span className="size-1.5 rounded-full bg-emerald-400" />Alex Morgan</div>}
+                {isReady && <div className="absolute bottom-3 left-3 flex items-center gap-2 rounded-md bg-black/45 px-2.5 py-1.5 text-xs text-white backdrop-blur"><span className="size-1.5 rounded-full bg-emerald-400" />{agent.name}</div>}
               </div>
               <div className="mt-4 flex flex-wrap items-center gap-3">
                 <Button variant={isMicrophoneEnabled ? "outline" : "secondary"} disabled={!isReady} onClick={toggleMicrophone}>{isMicrophoneEnabled ? <Mic /> : <MicOff />}{isMicrophoneEnabled ? "Mute" : "Unmute"}</Button>
