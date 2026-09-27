@@ -1,7 +1,6 @@
 "use client";
 
-import { useState } from "react";
-import Link from "next/link";
+import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Activity, Camera, Check, ChevronLeft, Copy, Maximize2, MoreVertical, Users, UserRound, X } from "lucide-react";
 import { toast } from "sonner";
@@ -14,6 +13,7 @@ import { useLocalMedia } from "@/hooks/use-local-media";
 import { useOutgoingMedia } from "@/hooks/use-outgoing-media";
 import { usePeerConnection } from "@/hooks/use-peer-connection";
 import { useScreenShare } from "@/hooks/use-screen-share";
+import { useSessionHistory } from "@/hooks/use-session-history";
 import { useSignaling } from "@/hooks/use-signaling";
 import { invitationUrl, readHostRoom } from "@/lib/signaling/client";
 import { cn } from "@/lib/utils";
@@ -49,6 +49,18 @@ export function SupportCall({ roomId }: { roomId: string }) {
     replaceVideoTrack: peer.replaceOutgoingVideoTrack,
     send: signaling.send,
   });
+  const handleHistoryError = useCallback(() => {
+    toast.warning("The call is still active, but its session history could not be updated.");
+  }, []);
+  const sessionHistory = useSessionHistory({
+    roomId,
+    customerName: signaling.room?.customerName ?? null,
+    customerState: signaling.room?.customerState ?? null,
+    connectionState: peer.connectionState,
+    diagnostics: peer.diagnostics,
+    recoveryAttempts: peer.recoveryAttempts,
+    onPersistenceError: handleHistoryError,
+  });
   const error = media.error || outgoingMedia.error || screenShare.error || peer.error || signaling.error;
   const reference = signaling.room?.reference || "Support session";
 
@@ -59,12 +71,14 @@ export function SupportCall({ roomId }: { roomId: string }) {
     catch { toast.error("Could not copy the invitation. Check your browser permissions."); }
   }
 
-  function endRoom() {
+  async function endRoom() {
     screenShare.releaseScreenShare();
     peer.close();
     media.stopMedia();
     signaling.leave();
+    await sessionHistory.complete();
     router.push("/dashboard");
+    router.refresh();
   }
 
   return (
@@ -116,7 +130,7 @@ export function SupportCall({ roomId }: { roomId: string }) {
               <DropdownMenuItem className="sm:hidden" onClick={() => setPanel("people")}><Users />People</DropdownMenuItem>
               <DropdownMenuItem onClick={copyInvite}><Copy />Copy invite link</DropdownMenuItem>
               <DropdownMenuItem onClick={() => void document.documentElement.requestFullscreen().catch(() => toast.error("Full screen could not be started."))}><Maximize2 />Enter full screen</DropdownMenuItem>
-              <DropdownMenuItem render={<Link href="/dashboard" />}><ChevronLeft />Back to dashboard</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => void endRoom()}><ChevronLeft />End room and return</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>

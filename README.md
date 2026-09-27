@@ -2,7 +2,7 @@
 
 SupportRoom is a browser application for private one-to-one video support calls. The frontend is built with Next.js, TypeScript, Tailwind CSS, and shadcn/ui. A Node.js `ws` service handles room creation, waiting-room admission, and WebRTC negotiation messages.
 
-The current implementation includes the frontend screens, Supabase agent authentication, real camera and microphone previews, WebSocket room signaling, and one-to-one WebRTC audio/video after admission. Calls include microphone/camera controls, screen sharing for either participant, complete media-track cleanup, ICE recovery, optional TURN relaying, and live connection diagnostics from `getStats()`.
+The current implementation includes the frontend screens, Supabase agent authentication and session history, real camera and microphone previews, WebSocket room signaling, and one-to-one WebRTC audio/video after admission. Calls include microphone/camera controls, screen sharing for either participant, complete media-track cleanup, ICE recovery, optional TURN relaying, and live connection diagnostics from `getStats()`.
 
 ## Development
 
@@ -13,6 +13,17 @@ pnpm install
 ```
 
 Copy the variables from `.env.example` into `.env.local` and add your Supabase project URL and publishable key. Create the first agent from the Supabase Authentication dashboard; public sign-up is intentionally disabled.
+
+Apply the tracked database migration to your Supabase project before testing session history:
+
+```bash
+pnpm exec supabase login
+pnpm exec supabase link --project-ref YOUR_PROJECT_ID
+pnpm exec supabase db push --dry-run
+pnpm exec supabase db push
+```
+
+The dry run shows the exact schema changes before anything reaches the remote database. See `docs/session-history.md` for the data model, RLS policies, and local workflow.
 
 Run the signaling service and web application in separate terminals:
 
@@ -34,6 +45,7 @@ Start the agent's camera, then start the customer's preview and ask to join. Adm
 - `docs/webrtc.md`: peer connection implementation and learning concepts
 - `docs/diagnostics.md`: metric calculations, interpretation, and tradeoffs
 - `docs/authentication.md`: agent sign-in, session refresh, protected routes, and Supabase setup
+- `docs/session-history.md`: persistent call lifecycle, diagnostic summaries, RLS, and migrations
 
 ## Validation
 
@@ -46,4 +58,4 @@ pnpm build:signaling
 pnpm exec next build --webpack
 ```
 
-The browser tests use fake media devices and separate test servers on ports 3100 and 8081. Camera and microphone removal recover independently without rebuilding the call. TURN servers can be configured through the documented environment variables, and failed ICE paths use host-led restart offers with two controlled recovery attempts. A real TURN deployment still requires cross-network testing. Persistent rooms and session history are the next milestone.
+The browser tests use fake media devices and separate test servers on ports 3100 and 8081. Camera and microphone removal recover independently without rebuilding the call. TURN servers can be configured through the documented environment variables, and failed ICE paths use host-led restart offers with two controlled recovery attempts. A real TURN deployment and the Supabase migration still require testing against your deployed infrastructure.

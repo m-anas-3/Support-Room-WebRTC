@@ -1,0 +1,1 @@
+-- Add local development fixtures here. Production data must not be seeded.
