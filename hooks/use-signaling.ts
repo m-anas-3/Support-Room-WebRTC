@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { serverMessageSchema, type ClientMessage, type RoomSnapshot, type SignalMessage } from "@support-room/shared";
+import { serverMessageSchema, type ClientMessage, type IceConfiguration, type RoomSnapshot, type SignalMessage } from "@support-room/shared";
 import { readHostRoom, signalingUrl } from "@/lib/signaling/client";
 
 type ConnectionStatus = "connecting" | "connected" | "disconnected" | "error" | "closed" | "declined";
@@ -11,6 +11,7 @@ export function useSignaling({ roomId, role, name, enabled = true, onDisconnect 
   const signalListeners = useRef(new Set<(message: SignalMessage) => void>());
   const [status, setStatus] = useState<ConnectionStatus>("connecting");
   const [room, setRoom] = useState<RoomSnapshot | null>(null);
+  const [iceConfiguration, setIceConfiguration] = useState<IceConfiguration | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -40,6 +41,7 @@ export function useSignaling({ roomId, role, name, enabled = true, onDisconnect 
         setStatus("connecting");
         const token = role === "host" ? readHostRoom(roomId)?.hostToken : new URLSearchParams(window.location.hash.slice(1)).get("token");
         setRoom(null);
+        setIceConfiguration(null);
         setError(null);
         if (!token) {
           clearResponseTimer();
@@ -58,6 +60,7 @@ export function useSignaling({ roomId, role, name, enabled = true, onDisconnect 
         const message = parsed.data;
         clearResponseTimer();
         switch (message.type) {
+          case "ice-configuration": setIceConfiguration(message); break;
           case "room-state": joined = true; setRoom(message.room); setStatus("connected"); setError(null); break;
           case "error":
             setError(message.message);
@@ -111,6 +114,7 @@ export function useSignaling({ roomId, role, name, enabled = true, onDisconnect 
     socketRef.current?.close();
     setStatus("closed");
     setRoom(null);
+    setIceConfiguration(null);
   }, []);
 
   const subscribeToSignals = useCallback((listener: (message: SignalMessage) => void) => {
@@ -118,5 +122,5 @@ export function useSignaling({ roomId, role, name, enabled = true, onDisconnect 
     return () => { signalListeners.current.delete(listener); };
   }, []);
 
-  return { status: enabled ? status : "idle" as const, room: enabled ? room : null, error: enabled ? error : null, send, leave, subscribeToSignals };
+  return { status: enabled ? status : "idle" as const, room: enabled ? room : null, iceConfiguration: enabled ? iceConfiguration : null, error: enabled ? error : null, send, leave, subscribeToSignals };
 }

@@ -1,3 +1,5 @@
+import type { IceConfiguration } from "@support-room/shared";
+
 export function getRtcConfiguration(): RTCConfiguration {
   const stunUrls = splitUrls(process.env.NEXT_PUBLIC_STUN_URLS ?? "stun:stun.l.google.com:19302");
   const turnUrls = splitUrls(process.env.NEXT_PUBLIC_TURN_URLS ?? "");
@@ -23,6 +25,17 @@ export function getRtcConfiguration(): RTCConfiguration {
   }
   const iceTransportPolicy: RTCIceTransportPolicy = policy === "relay" ? "relay" : "all";
   return { iceServers, iceTransportPolicy };
+}
+
+export function resolveRtcConfiguration(configuration: IceConfiguration | null): RTCConfiguration {
+  if (!configuration) return getRtcConfiguration();
+  if (configuration.expiresAt <= Date.now()) {
+    throw new Error("The TURN credentials have expired. Reconnect to the room and try again.");
+  }
+  return {
+    iceServers: configuration.iceServers,
+    iceTransportPolicy: configuration.iceTransportPolicy,
+  };
 }
 
 function splitUrls(value: string) {

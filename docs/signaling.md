@@ -1,6 +1,6 @@
 # Signaling milestone
 
-This milestone adds an in-memory WebSocket signaling service for one host and one customer. It creates rooms, checks separate host and invitation tokens, tracks the waiting state, lets the host admit or decline the customer, and forwards WebRTC offer, answer, ICE candidate, screen-share state, and camera/microphone state messages after admission.
+This milestone adds an in-memory WebSocket signaling service for one host and one customer. It creates rooms, checks separate host and invitation tokens, tracks the waiting state, lets the host admit or decline the customer, issues short-lived TURN credentials, and forwards WebRTC offer, answer, ICE candidate, screen-share state, and camera/microphone state messages after admission.
 
 The signaling server does not carry audio or video. Media now flows through the browser's `RTCPeerConnection`. The room screen shows real connection states; numeric metrics and the selected candidate remain empty until the diagnostics milestone adds `getStats()` measurements.
 
@@ -26,9 +26,21 @@ Open the dashboard, create a room, copy the invitation link, and open the host r
 
 The default WebSocket endpoint is `ws://localhost:8080/signal`. Set `NEXT_PUBLIC_SIGNALING_URL` for another endpoint. The server accepts `PORT`, `HOST`, and a comma-separated `ALLOWED_ORIGINS` environment variable.
 
+For production TURN, configure these variables on the signaling service, such as Render:
+
+```text
+STUN_URLS=stun:stun.l.google.com:19302
+TURN_URLS=turn:turn.example.com:3478?transport=udp,turns:turn.example.com:5349?transport=tcp
+TURN_SHARED_SECRET=the-same-random-secret-used-by-coturn
+TURN_CREDENTIAL_TTL_SECONDS=3600
+ICE_TRANSPORT_POLICY=all
+```
+
+Configure coturn with `use-auth-secret` and the same value as `static-auth-secret`. The shared secret stays on servers. Each joined browser receives only a time-limited derived credential. Set `ICE_TRANSPORT_POLICY=relay` temporarily when verifying TURN, then restore `all` so ICE can prefer a direct path.
+
 ## Current boundaries
 
 - Rooms live in memory and disappear when the server restarts.
 - The host secret stays in `sessionStorage`; the customer secret uses the URL fragment so it is not included in HTTP request URLs.
-- A temporary host disconnect allows 10 seconds to rejoin using the same host secret. The customer returns to waiting and must be admitted again. End room closes immediately; automatic reconnection and session persistence come later.
-- Production identity checks will be added with Supabase authentication. Dashboard statistics and session history still use example data.
+- A temporary host disconnect allows 10 seconds to rejoin using the same host secret. The customer returns to waiting and must be admitted again. End room closes immediately.
+- Rooms still live in memory, so a signaling-service restart closes active rooms. Supabase stores durable session history but does not restore live WebSocket membership or peer negotiation.

@@ -31,7 +31,7 @@ export function SupportCall({ roomId }: { roomId: string }) {
   const admitted = signaling.room?.customerState === "admitted";
   const waitingCustomer = signaling.room?.customerState === "waiting";
   const mediaReady = media.status === "ready" && Boolean(media.stream);
-  const peer = usePeerConnection({ role: "host", localStream: media.stream, enabled: admitted && signaling.status === "connected", send: signaling.send, subscribeToSignals: signaling.subscribeToSignals });
+  const peer = usePeerConnection({ role: "host", localStream: media.stream, enabled: admitted && signaling.status === "connected", iceConfiguration: signaling.iceConfiguration, send: signaling.send, subscribeToSignals: signaling.subscribeToSignals });
   const screenShare = useScreenShare({
     cameraStream: media.stream,
     enabled: peer.connectionState === "connected",

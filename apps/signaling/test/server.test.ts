@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, test } from "node:test";
 import type { AddressInfo } from "node:net";
-import { randomUUID } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 import { WebSocket } from "ws";
 import { serverMessageSchema, type CreatedRoom, type ServerMessage } from "@support-room/shared";
 import { createSignalingServer } from "../src/server.js";
@@ -25,6 +25,8 @@ class Inbox {
   }
 
   send(message: object) { this.socket.send(JSON.stringify(message)); }
+
+  has(type: ServerMessage["type"]) { return this.messages.some((message) => message.type === type); }
 
   async next<T extends ServerMessage["type"]>(type: T, predicate?: (message: Extract<ServerMessage, { type: T }>) => boolean) {
     const take = () => {
@@ -261,4 +263,42 @@ test("allows a host to rejoin during the grace period, then closes an abandoned 
 
   rejoined.socket.terminate();
   assert.equal((await customer.next("room-closed")).reason, "host-left");
+});
+
+test("issues short-lived TURN credentials only after a valid room join", async () => {
+  await app.close();
+  const sharedSecret = "test-turn-shared-secret";
+  app = createSignalingServer({
+    allowedOrigins: [origin],
+    iceConfiguration: {
+      stunUrls: ["stun:stun.example.com:3478"],
+      turnUrls: ["turn:turn.example.com:3478?transport=udp", "turns:turn.example.com:5349?transport=tcp"],
+      sharedSecret,
+      ttlSeconds: 600,
+      transportPolicy: "all",
+    },
+  });
+  await app.listen(0);
+  const address = app.server.address() as AddressInfo;
+  url = `ws://127.0.0.1:${address.port}/signal`;
+
+  const creator = await connect();
+  const room = await createRoom(creator);
+  const invalid = await connect();
+  join(invalid, room, "customer", "x".repeat(64), "Invalid");
+  assert.equal((await invalid.next("error")).code, "INVALID_TOKEN");
+  assert.equal(invalid.has("ice-configuration"), false);
+
+  const host = await connect();
+  join(host, room, "host", room.hostToken, "Alex");
+  const configuration = await host.next("ice-configuration");
+  const turn = configuration.iceServers.find((server) => "username" in server);
+  assert.ok(turn && "username" in turn && "credential" in turn);
+  assert.deepEqual(configuration.iceServers[0], { urls: ["stun:stun.example.com:3478"] });
+  assert.deepEqual(turn.urls, ["turn:turn.example.com:3478?transport=udp", "turns:turn.example.com:5349?transport=tcp"]);
+  assert.match(turn.username, new RegExp(`^\\d+:${room.roomId}:host$`));
+  assert.equal(configuration.expiresAt, Number(turn.username.split(":", 1)[0]) * 1000);
+  assert.equal(turn.credential, createHmac("sha1", sharedSecret).update(turn.username).digest("base64"));
+  assert.ok(configuration.expiresAt > Date.now() + 590_000);
+  assert.equal(configuration.iceTransportPolicy, "all");
 });

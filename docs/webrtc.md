@@ -6,7 +6,7 @@ SupportRoom now connects two browser participants with native WebRTC audio and v
 
 - `hooks/use-peer-connection.ts` starts and disposes a connection while the participant has local media, an admitted room, and an open signaling channel.
 - `lib/webrtc/peer-connection.ts` owns the native connection, SDP operations, ICE queues, remote stream, and connection-state subscriptions. React reads its event-driven snapshots with `useSyncExternalStore`.
-- `lib/webrtc/config.ts` configures STUN and optional TURN servers from environment variables. `NEXT_PUBLIC_ICE_TRANSPORT_POLICY=relay` can temporarily force relay candidates while verifying a TURN deployment.
+- `lib/webrtc/config.ts` accepts short-lived ICE configuration from the authenticated signaling connection. Its public STUN variables remain as a local-development fallback when the signaling server has no TURN configuration.
 - `components/room/video-tile.tsx` attaches a stream to `video.srcObject`. Local video is muted and mirrored; remote video plays the other participant's audio. A playback button handles browsers that block autoplay.
 - `components/room/call-controls.tsx` controls actual tracks and provides explicit leave/end actions.
 - `hooks/use-local-media.ts` manages camera and microphone tracks independently, releases camera capture when video is turned off, and attempts a same-kind fallback when hardware disappears.
@@ -51,8 +51,12 @@ The sharer's self tile continues to show their camera with a **Presenting** labe
 
 ## TURN and connection recovery
 
-- Set `NEXT_PUBLIC_TURN_URLS`, `NEXT_PUBLIC_TURN_USERNAME`, and `NEXT_PUBLIC_TURN_CREDENTIAL` to add relay candidates. TURN credentials must reach the browser, so production credentials should be short-lived and regularly rotated rather than permanent shared secrets.
-- Keep `NEXT_PUBLIC_ICE_TRANSPORT_POLICY=all` in normal operation. Set it to `relay` only during a controlled test to prove that media can travel through TURN.
+- Configure coturn with `use-auth-secret` and a `static-auth-secret`. Store that shared value only as `TURN_SHARED_SECRET` on the signaling server; never add it to a `NEXT_PUBLIC_*` variable.
+- Set `TURN_URLS` on the signaling server to comma-separated `turn:` or `turns:` endpoints. `STUN_URLS` defaults to Google's public STUN endpoint and can be replaced or cleared.
+- After a host or customer proves possession of a valid room token, the signaling server issues `timestamp:room:role` as the temporary username and `base64(HMAC-SHA1(shared-secret, username))` as the temporary credential. Invalid and expired room tokens never receive ICE configuration.
+- `TURN_CREDENTIAL_TTL_SECONDS` defaults to one hour and accepts 600 to 86400 seconds. Keep it longer than the 30-minute room lifetime so an ICE restart can create a fresh relay allocation near the end of a call.
+- Keep signaling-server `ICE_TRANSPORT_POLICY=all` in normal operation. Set it to `relay` only during a controlled test to prove that media can travel through TURN.
+- Existing `NEXT_PUBLIC_TURN_*` variables remain a compatibility fallback in the browser, but new deployments should use signaling-issued credentials so the shared secret never enters the frontend build.
 - A temporary ICE `disconnected` state gets a four-second grace period because browsers often recover brief network interruptions themselves.
 - A `failed` state, or a disconnection that survives the grace period, starts connection recovery. The host remains the offerer and creates an ICE-restart offer, while the customer can send an `ice-restart-request` through signaling.
 - Each side keeps its current senders, tracks, and remote stream during renegotiation. Recovery gets two attempts before the call reports a terminal error.
@@ -82,7 +86,7 @@ SDP operations and incoming ICE messages are processed sequentially. Local candi
 
 `pnpm test:signaling` checks admission, role and token enforcement, readiness, isolation, expiry, the host reconnect window, media-state relay, and customer-to-host ICE restart requests. `pnpm test:e2e` runs real Chromium peer connections with fake camera/microphone devices, checks inbound audio/video RTP bytes, verifies the live diagnostics panel, proves normal and rapid camera restarts resume incoming video without a new peer connection, verifies screen sharing sends the display track while the local tile stays on the camera, simulates device removal and recovery, and verifies cleanup.
 
-The tests use a separate `.next-e2e` directory and local test ports. Headless Chromium receives a separate fake native video track in place of the operating-system source picker, allowing the test to verify sender replacement, state relay, camera restoration, and display-track cleanup. Automated tests do not prove cross-network reliability or exercise a deployed TURN service. Production identity and persistent history remain future work.
+The tests use a separate `.next-e2e` directory and local test ports. Headless Chromium receives a separate fake native video track in place of the operating-system source picker, allowing the test to verify sender replacement, state relay, camera restoration, and display-track cleanup. Signaling tests verify coturn-compatible HMAC credentials and ensure they are sent only after a valid room join. Automated tests do not prove cross-network reliability or exercise your deployed TURN server.
 
 ## Authoritative resources
 
@@ -101,4 +105,5 @@ The tests use a separate `.next-e2e` directory and local test ports. Headless Ch
 - [MDN: RTCPeerConnection.getStats](https://developer.mozilla.org/en-US/docs/Web/API/RTCPeerConnection/getStats)
 - [MDN: RTCPeerConnection.restartIce](https://developer.mozilla.org/en-US/docs/Web/API/RTCPeerConnection/restartIce)
 - [WebRTC.org: TURN server](https://webrtc.org/getting-started/turn-server)
+- [coturn: TURN REST authentication configuration](https://github.com/coturn/coturn/blob/master/examples/etc/turnserver.conf)
 - [Official WebRTC peer connection sample](https://webrtc.github.io/samples/src/content/peerconnection/pc1/)

@@ -9,6 +9,16 @@ const candidate = z.object({
   sdpMLineIndex: z.number().int().nonnegative().nullable().optional(),
   usernameFragment: z.string().max(256).nullable().optional(),
 });
+const iceServer = z.union([
+  z.object({
+    urls: z.array(z.string().trim().min(1).max(2048)).min(1).max(8),
+    username: z.string().min(1).max(512),
+    credential: z.string().min(1).max(512),
+  }),
+  z.object({
+    urls: z.array(z.string().trim().min(1).max(2048)).min(1).max(8),
+  }),
+]);
 
 // These schemas validate untrusted JSON at both ends of the socket.
 export const clientMessageSchema = z.discriminatedUnion("type", [
@@ -38,6 +48,12 @@ export const roomSnapshotSchema = z.object({
 export const serverMessageSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("room-created"), requestId: z.string().uuid(), roomId, hostToken: token, inviteToken: token, expiresAt: z.number() }),
   z.object({ type: z.literal("room-state"), room: roomSnapshotSchema }),
+  z.object({
+    type: z.literal("ice-configuration"),
+    iceServers: z.array(iceServer).max(8),
+    iceTransportPolicy: z.enum(["all", "relay"]),
+    expiresAt: z.number().int().positive(),
+  }),
   z.object({ type: z.literal("admitted") }),
   z.object({ type: z.literal("declined") }),
   z.object({ type: z.literal("peer-left") }),
@@ -55,5 +71,6 @@ export const serverMessageSchema = z.discriminatedUnion("type", [
 export type ClientMessage = z.infer<typeof clientMessageSchema>;
 export type ServerMessage = z.infer<typeof serverMessageSchema>;
 export type RoomSnapshot = z.infer<typeof roomSnapshotSchema>;
+export type IceConfiguration = Extract<ServerMessage, { type: "ice-configuration" }>;
 export type CreatedRoom = Extract<ServerMessage, { type: "room-created" }>;
 export type SignalMessage = Extract<ServerMessage, { type: "offer" | "answer" | "ice-candidate" | "ice-restart-request" | "screen-share-state" | "media-state" | "peers-ready" | "peer-left" | "room-closed" | "declined" }>;

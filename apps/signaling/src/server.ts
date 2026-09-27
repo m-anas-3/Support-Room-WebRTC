@@ -4,9 +4,14 @@ import { WebSocketServer } from "ws";
 import { clientMessageSchema } from "@support-room/shared";
 import { RoomRegistry } from "./rooms.js";
 import { send, sendError } from "./messages.js";
+import { iceConfigurationFromEnv, issueIceConfiguration, type IceConfigurationOptions } from "./ice.js";
 
-export function createSignalingServer(options: { allowedOrigins: string[]; roomTtlMs?: number; maxRooms?: number; hostReconnectGraceMs?: number }) {
-  const rooms = new RoomRegistry(options.roomTtlMs, options.maxRooms, options.hostReconnectGraceMs);
+export function createSignalingServer(options: { allowedOrigins: string[]; roomTtlMs?: number; maxRooms?: number; hostReconnectGraceMs?: number; iceConfiguration?: IceConfigurationOptions }) {
+  const iceOptions = options.iceConfiguration;
+  const issuer = iceOptions
+    ? (roomId: string, role: "host" | "customer") => issueIceConfiguration(iceOptions, `${roomId}:${role}`)
+    : null;
+  const rooms = new RoomRegistry(options.roomTtlMs, options.maxRooms, options.hostReconnectGraceMs, issuer);
   const server = createServer((request, response) => {
     if (request.url === "/health") {
       response.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
@@ -77,8 +82,10 @@ export function createSignalingServer(options: { allowedOrigins: string[]; roomT
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const iceConfiguration = iceConfigurationFromEnv(process.env);
   const app = createSignalingServer({
     allowedOrigins: (process.env.ALLOWED_ORIGINS ?? "http://localhost:3000,http://localhost:3001,http://127.0.0.1:3000,http://127.0.0.1:3001").split(",").map((origin) => origin.trim()),
+    ...(iceConfiguration ? { iceConfiguration } : {}),
   });
   const port = Number(process.env.PORT ?? 8080);
   await app.listen(port, process.env.HOST ?? "127.0.0.1");

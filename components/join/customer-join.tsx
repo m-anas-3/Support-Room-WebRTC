@@ -28,7 +28,7 @@ export function CustomerJoin({ roomId }: { roomId: string }) {
   const admitted = signaling.room?.customerState === "admitted";
   const isReady = media.status === "ready";
   const failed = ["error", "closed", "disconnected", "declined"].includes(signaling.status);
-  const peer = usePeerConnection({ role: "customer", localStream: media.stream, enabled: admitted && signaling.status === "connected", send: signaling.send, subscribeToSignals: signaling.subscribeToSignals });
+  const peer = usePeerConnection({ role: "customer", localStream: media.stream, enabled: admitted && signaling.status === "connected", iceConfiguration: signaling.iceConfiguration, send: signaling.send, subscribeToSignals: signaling.subscribeToSignals });
   const screenShare = useScreenShare({
     cameraStream: media.stream,
     enabled: peer.connectionState === "connected",

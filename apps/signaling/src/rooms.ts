@@ -1,6 +1,6 @@
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { WebSocket } from "ws";
-import type { ClientMessage, CreatedRoom, RoomSnapshot } from "@support-room/shared";
+import type { ClientMessage, CreatedRoom, IceConfiguration, RoomSnapshot } from "@support-room/shared";
 import { send, sendError } from "./messages.js";
 
 type Room = {
@@ -19,6 +19,7 @@ type Room = {
   hostDisconnectTimer: ReturnType<typeof setTimeout> | null;
 };
 type Membership = { room: Room; role: "host" | "customer" };
+type IceConfigurationIssuer = (roomId: string, role: Membership["role"]) => IceConfiguration;
 
 function matchesToken(provided: string, expected: string) {
   const a = Buffer.from(provided);
@@ -30,7 +31,12 @@ export class RoomRegistry {
   private rooms = new Map<string, Room>();
   private memberships = new Map<WebSocket, Membership>();
 
-  constructor(private ttlMs = 30 * 60 * 1000, private maxRooms = 1000, private hostReconnectGraceMs = 10000) {}
+  constructor(
+    private ttlMs = 30 * 60 * 1000,
+    private maxRooms = 1000,
+    private hostReconnectGraceMs = 10000,
+    private issueIceConfiguration: IceConfigurationIssuer | null = null,
+  ) {}
 
   create(requestId: string, reference: string): CreatedRoom | null {
     if (this.rooms.size >= this.maxRooms) return null;
@@ -80,6 +86,7 @@ export class RoomRegistry {
       room.customerReady = false;
     }
     this.memberships.set(socket, { room, role: message.role });
+    if (this.issueIceConfiguration) send(socket, this.issueIceConfiguration(room.id, message.role));
     this.broadcast(room);
   }
 
