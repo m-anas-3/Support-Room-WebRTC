@@ -21,6 +21,9 @@ type Room = {
 };
 type Membership = { room: Room; role: "host" | "customer" };
 type IceConfigurationIssuer = (roomId: string, role: Membership["role"]) => IceConfiguration;
+export type RoomClosureReason = "host-ended" | "host-disconnected" | "expired" | "server-shutdown";
+export type RoomClosure = { roomId: string; agentId: string; reason: RoomClosureReason; endedAt: string };
+type RoomClosureListener = (closure: RoomClosure) => void;
 
 function matchesToken(provided: string, expected: string) {
   const a = Buffer.from(provided);
@@ -37,6 +40,7 @@ export class RoomRegistry {
     private maxRooms = 1000,
     private hostReconnectGraceMs = 30000,
     private issueIceConfiguration: IceConfigurationIssuer | null = null,
+    private onRoomClosed: RoomClosureListener | null = null,
   ) {}
 
   create(requestId: string, reference: string, agentId: string): CreatedRoom | null {
@@ -145,7 +149,7 @@ export class RoomRegistry {
     const { room, role } = membership;
     this.memberships.delete(socket);
     if (role === "host") {
-      if (intentional) return this.closeRoom(room, "host-left");
+      if (intentional) return this.closeRoom(room, "host-ended");
       room.host = null;
       room.admitted = false;
       room.hostReady = false;
@@ -153,7 +157,7 @@ export class RoomRegistry {
       send(room.customer, { type: "peer-left" });
       this.broadcast(room);
       room.hostDisconnectTimer = setTimeout(() => {
-        if (!room.host && this.rooms.has(room.id)) this.closeRoom(room, "host-left");
+        if (!room.host && this.rooms.has(room.id)) this.closeRoom(room, "host-disconnected");
       }, this.hostReconnectGraceMs);
       return;
     }
@@ -166,15 +170,17 @@ export class RoomRegistry {
     this.broadcast(room);
   }
 
-  private closeRoom(room: Room, reason: "host-left" | "expired" | "server-shutdown") {
+  private closeRoom(room: Room, reason: RoomClosureReason) {
     if (room.hostDisconnectTimer) clearTimeout(room.hostDisconnectTimer);
-    this.rooms.delete(room.id);
+    if (!this.rooms.delete(room.id)) return;
+    const clientReason = reason === "host-ended" || reason === "host-disconnected" ? "host-left" : reason;
     for (const socket of [room.host, room.customer]) {
       if (!socket) continue;
       this.memberships.delete(socket);
-      send(socket, { type: "room-closed", reason });
+      send(socket, { type: "room-closed", reason: clientReason });
       socket.close(1000, "Room closed");
     }
+    this.onRoomClosed?.({ roomId: room.id, agentId: room.agentId, reason, endedAt: new Date().toISOString() });
   }
 
   expire() {

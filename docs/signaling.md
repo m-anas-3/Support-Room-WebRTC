@@ -37,9 +37,10 @@ Set these values on the signaling service. They identify the same project used b
 ```text
 SUPABASE_URL=https://YOUR_PROJECT.supabase.co
 SUPABASE_PUBLISHABLE_KEY=YOUR_PUBLISHABLE_KEY
+SUPABASE_SECRET_KEY=YOUR_BACKEND_ONLY_SECRET_KEY
 ```
 
-Local signaling startup reads `.env.local` when it exists and also accepts the frontend names `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`. Production startup fails when neither pair is configured, preventing an accidentally unprotected room-creation endpoint.
+Local signaling startup reads `.env.local` when it exists and also accepts the frontend names `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`. Production startup fails when neither public-key pair is configured, preventing an accidentally unprotected room-creation endpoint. The secret key is optional during development; when configured, it finalizes unfinished session rows after a host disconnect, room expiry, or signaling shutdown. The legacy `SUPABASE_SERVICE_ROLE_KEY` remains a compatibility fallback, but new deployments should use `SUPABASE_SECRET_KEY`.
 
 For production TURN, configure these variables on the signaling service, such as Render:
 
@@ -60,4 +61,5 @@ Configure coturn with `use-auth-secret` and the same value as `static-auth-secre
 - The host secret stays in `sessionStorage`; the customer secret uses the URL fragment so it is not included in HTTP request URLs.
 - A temporary signaling disconnect starts bounded exponential-backoff retries in the browser. Camera and microphone tracks remain available during this recovery window instead of being released immediately.
 - A disconnected host has 30 seconds to rejoin using the same host secret. After either participant rejoins, the customer returns to waiting and must be admitted again before a fresh peer connection is negotiated. End room still closes immediately.
+- When a room closes, the signaling service reconciles its unfinished Supabase history row without overwriting a report the host browser already completed.
 - Rooms still live in memory, so a signaling-service restart closes active rooms. Supabase stores durable session history but does not restore live WebSocket membership or peer negotiation.

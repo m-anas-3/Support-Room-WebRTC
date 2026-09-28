@@ -7,13 +7,22 @@ import { RoomRegistry } from "./rooms.js";
 import { send, sendError } from "./messages.js";
 import { iceConfigurationFromEnv, issueIceConfiguration, type IceConfigurationOptions } from "./ice.js";
 import { roomCreationAuthenticatorFromEnv, type RoomCreationAuthenticator } from "./auth.js";
+import { sessionFinalizerFromEnv, type SessionFinalizer } from "./history.js";
 
-export function createSignalingServer(options: { allowedOrigins: string[]; authenticateRoomCreation: RoomCreationAuthenticator; roomTtlMs?: number; maxRooms?: number; hostReconnectGraceMs?: number; iceConfiguration?: IceConfigurationOptions }) {
+export function createSignalingServer(options: { allowedOrigins: string[]; authenticateRoomCreation: RoomCreationAuthenticator; finalizeSession?: SessionFinalizer; roomTtlMs?: number; maxRooms?: number; hostReconnectGraceMs?: number; iceConfiguration?: IceConfigurationOptions }) {
+  const pendingFinalizations = new Set<Promise<void>>();
+  const scheduleFinalization = options.finalizeSession ? (closure: Parameters<SessionFinalizer>[0]) => {
+    const operation = Promise.resolve()
+      .then(() => options.finalizeSession!(closure))
+      .catch(() => console.error(`Could not reconcile support session ${closure.roomId}.`))
+      .finally(() => pendingFinalizations.delete(operation));
+    pendingFinalizations.add(operation);
+  } : null;
   const iceOptions = options.iceConfiguration;
   const issuer = iceOptions
     ? (roomId: string, role: "host" | "customer") => issueIceConfiguration(iceOptions, `${roomId}:${role}`)
     : null;
-  const rooms = new RoomRegistry(options.roomTtlMs, options.maxRooms, options.hostReconnectGraceMs, issuer);
+  const rooms = new RoomRegistry(options.roomTtlMs, options.maxRooms, options.hostReconnectGraceMs, issuer, scheduleFinalization);
   const server = createServer((request, response) => {
     if (request.url === "/health") {
       response.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
@@ -84,6 +93,7 @@ export function createSignalingServer(options: { allowedOrigins: string[]; authe
     async close() {
       clearInterval(expiryTimer);
       rooms.closeAll();
+      await Promise.allSettled([...pendingFinalizations]);
       for (const client of wss.clients) client.terminate();
       await new Promise<void>((resolve) => wss.close(() => resolve()));
       if (server.listening) await new Promise<void>((resolve) => server.close(() => resolve()));
@@ -97,6 +107,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   }
   const iceConfiguration = iceConfigurationFromEnv(process.env);
   const authenticateRoomCreation = roomCreationAuthenticatorFromEnv(process.env);
+  const finalizeSession = sessionFinalizerFromEnv(process.env);
   const hostReconnectGraceMs = Number(process.env.HOST_RECONNECT_GRACE_MS ?? 30000);
   if (!Number.isInteger(hostReconnectGraceMs) || hostReconnectGraceMs < 5000 || hostReconnectGraceMs > 120000) {
     throw new Error("HOST_RECONNECT_GRACE_MS must be an integer between 5000 and 120000.");
@@ -104,6 +115,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const app = createSignalingServer({
     allowedOrigins: (process.env.ALLOWED_ORIGINS ?? "http://localhost:3000,http://localhost:3001,http://127.0.0.1:3000,http://127.0.0.1:3001").split(",").map((origin) => origin.trim()),
     authenticateRoomCreation,
+    ...(finalizeSession ? { finalizeSession } : {}),
     hostReconnectGraceMs,
     ...(iceConfiguration ? { iceConfiguration } : {}),
   });

@@ -5,6 +5,7 @@ import { createHmac, randomUUID } from "node:crypto";
 import { WebSocket } from "ws";
 import { serverMessageSchema, type CreatedRoom, type ServerMessage } from "@support-room/shared";
 import { createSignalingServer } from "../src/server.js";
+import type { RoomClosure } from "../src/rooms.js";
 
 const origin = "http://localhost:3000";
 const validAccessToken = "test-agent-access-token-00000001";
@@ -12,6 +13,7 @@ const authenticateRoomCreation = async (accessToken: string) => accessToken === 
 let app: ReturnType<typeof createSignalingServer>;
 let url: string;
 const clients = new Set<WebSocket>();
+let closures: RoomClosure[] = [];
 
 class Inbox {
   private messages: ServerMessage[] = [];
@@ -68,12 +70,22 @@ async function createRoom(client: Inbox, reference = "Ticket 42") {
   return await client.next("room-created", (message) => message.requestId === requestId);
 }
 
+async function closureFor(roomId: string) {
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    const closure = closures.find((item) => item.roomId === roomId);
+    if (closure) return closure;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error(`Timed out waiting for room closure ${roomId}`);
+}
+
 function join(client: Inbox, room: CreatedRoom, role: "host" | "customer", token: string, name: string) {
   client.send({ type: "join-room", roomId: room.roomId, role, token, name });
 }
 
 beforeEach(async () => {
-  app = createSignalingServer({ allowedOrigins: [origin], authenticateRoomCreation, roomTtlMs: 10_000, hostReconnectGraceMs: 1000 });
+  closures = [];
+  app = createSignalingServer({ allowedOrigins: [origin], authenticateRoomCreation, finalizeSession: async (closure) => { closures.push(closure); }, roomTtlMs: 10_000, hostReconnectGraceMs: 1000 });
   await app.listen(0);
   const address = app.server.address() as AddressInfo;
   url = `ws://127.0.0.1:${address.port}/signal`;
@@ -172,6 +184,7 @@ test("closes the room when the host leaves and rejects disallowed origins", asyn
   await customer.next("room-state");
   host.send({ type: "leave" });
   assert.equal((await customer.next("room-closed")).reason, "host-left");
+  assert.equal((await closureFor(room.roomId)).reason, "host-ended");
 
   await new Promise<void>((resolve, reject) => {
     const socket = new WebSocket(url, { origin: "https://evil.example" });
@@ -242,7 +255,7 @@ test("declining frees the customer slot and malformed messages are rejected", as
 
 test("expires active rooms and rejects reuse of their credentials", async () => {
   await app.close();
-  app = createSignalingServer({ allowedOrigins: [origin], authenticateRoomCreation, roomTtlMs: 200 });
+  app = createSignalingServer({ allowedOrigins: [origin], authenticateRoomCreation, finalizeSession: async (closure) => { closures.push(closure); }, roomTtlMs: 200 });
   await app.listen(0);
   const address = app.server.address() as AddressInfo;
   url = `ws://127.0.0.1:${address.port}/signal`;
@@ -251,6 +264,7 @@ test("expires active rooms and rejects reuse of their credentials", async () => 
   join(host, room, "host", room.hostToken, "Host");
   await host.next("room-state");
   assert.equal((await host.next("room-closed")).reason, "expired");
+  assert.equal((await closureFor(room.roomId)).reason, "expired");
   const late = await connect();
   join(late, room, "customer", room.inviteToken, "Late");
   assert.equal((await late.next("error")).code, "ROOM_UNAVAILABLE");
@@ -274,6 +288,7 @@ test("allows a host to rejoin during the grace period, then closes an abandoned 
 
   rejoined.socket.terminate();
   assert.equal((await customer.next("room-closed")).reason, "host-left");
+  assert.equal((await closureFor(room.roomId)).reason, "host-disconnected");
 });
 
 test("issues short-lived TURN credentials only after a valid room join", async () => {
@@ -282,6 +297,7 @@ test("issues short-lived TURN credentials only after a valid room join", async (
   app = createSignalingServer({
     allowedOrigins: [origin],
     authenticateRoomCreation,
+    finalizeSession: async (closure) => { closures.push(closure); },
     iceConfiguration: {
       stunUrls: ["stun:stun.example.com:3478"],
       turnUrls: ["turn:turn.example.com:3478?transport=udp", "turns:turn.example.com:5349?transport=tcp"],
