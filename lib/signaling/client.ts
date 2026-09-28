@@ -1,4 +1,7 @@
 import { serverMessageSchema, type CreatedRoom } from "@support-room/shared";
+import { createClient } from "@/lib/supabase/client";
+
+const E2E_ACCESS_TOKEN = "supportroom-e2e-room-creation-token";
 
 export function signalingUrl() {
   return process.env.NEXT_PUBLIC_SIGNALING_URL ?? "ws://localhost:8080/signal";
@@ -19,6 +22,7 @@ export function invitationUrl(room: CreatedRoom) {
 
 export async function createSupportRoom(reference: string): Promise<CreatedRoom> {
   const requestId = crypto.randomUUID();
+  const accessToken = await roomCreationAccessToken();
   const room = await new Promise<CreatedRoom>((resolve, reject) => {
     const socket = new WebSocket(signalingUrl());
     let settled = false;
@@ -31,7 +35,7 @@ export async function createSupportRoom(reference: string): Promise<CreatedRoom>
       if (result instanceof Error) reject(result);
       else resolve(result);
     }
-    socket.onopen = () => socket.send(JSON.stringify({ type: "create-room", requestId, reference }));
+    socket.onopen = () => socket.send(JSON.stringify({ type: "create-room", requestId, reference, accessToken }));
     socket.onmessage = (event) => {
       let data: unknown;
       try { data = JSON.parse(event.data); } catch { return finish(new Error("Invalid signaling response.")); }
@@ -45,4 +49,14 @@ export async function createSupportRoom(reference: string): Promise<CreatedRoom>
   });
   sessionStorage.setItem(`supportroom:host:${room.roomId}`, JSON.stringify(room));
   return room;
+}
+
+async function roomCreationAccessToken() {
+  if (process.env.NEXT_PUBLIC_SUPPORTROOM_E2E === "1") return E2E_ACCESS_TOKEN;
+  const supabase = createClient();
+  const { data, error } = await supabase.auth.getSession();
+  if (error || !data.session?.access_token) {
+    throw new Error("Your agent session has expired. Sign in again before creating a room.");
+  }
+  return data.session.access_token;
 }

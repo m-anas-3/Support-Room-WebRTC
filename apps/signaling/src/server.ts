@@ -1,12 +1,14 @@
 import { createServer } from "node:http";
-import { pathToFileURL } from "node:url";
-import { WebSocketServer } from "ws";
+import { loadEnvFile } from "node:process";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { WebSocket, WebSocketServer } from "ws";
 import { clientMessageSchema } from "@support-room/shared";
 import { RoomRegistry } from "./rooms.js";
 import { send, sendError } from "./messages.js";
 import { iceConfigurationFromEnv, issueIceConfiguration, type IceConfigurationOptions } from "./ice.js";
+import { roomCreationAuthenticatorFromEnv, type RoomCreationAuthenticator } from "./auth.js";
 
-export function createSignalingServer(options: { allowedOrigins: string[]; roomTtlMs?: number; maxRooms?: number; hostReconnectGraceMs?: number; iceConfiguration?: IceConfigurationOptions }) {
+export function createSignalingServer(options: { allowedOrigins: string[]; authenticateRoomCreation: RoomCreationAuthenticator; roomTtlMs?: number; maxRooms?: number; hostReconnectGraceMs?: number; iceConfiguration?: IceConfigurationOptions }) {
   const iceOptions = options.iceConfiguration;
   const issuer = iceOptions
     ? (roomId: string, role: "host" | "customer") => issueIceConfiguration(iceOptions, `${roomId}:${role}`)
@@ -42,7 +44,7 @@ export function createSignalingServer(options: { allowedOrigins: string[]; roomT
     socket.on("error", () => { socket.terminate(); });
     socket.on("close", () => { clearInterval(heartbeat); rooms.leave(socket); });
 
-    socket.on("message", (data, isBinary) => {
+    socket.on("message", async (data, isBinary) => {
       if (Date.now() - windowStarted > 10000) { count = 0; windowStarted = Date.now(); }
       if (++count > 100) { socket.close(1008, "Rate limit exceeded"); return; }
       if (isBinary) return sendError(socket, "INVALID_MESSAGE", "Only JSON text messages are accepted.");
@@ -54,7 +56,15 @@ export function createSignalingServer(options: { allowedOrigins: string[]; roomT
       const message = parsed.data;
       if (message.type === "create-room") {
         if (++createdRooms > 5) return sendError(socket, "ROOM_LIMIT", "Too many rooms created on this connection.");
-        const created = rooms.create(message.requestId, message.reference);
+        let identity;
+        try {
+          identity = await options.authenticateRoomCreation(message.accessToken);
+        } catch {
+          return sendError(socket, "AUTH_UNAVAILABLE", "Agent authentication is temporarily unavailable. Try again.");
+        }
+        if (!identity) return sendError(socket, "AUTH_REQUIRED", "Sign in again before creating a support room.");
+        if (socket.readyState !== WebSocket.OPEN) return;
+        const created = rooms.create(message.requestId, message.reference, identity.agentId);
         if (!created) return sendError(socket, "SERVER_BUSY", "The server is at capacity. Try again later.");
         send(socket, created);
       } else if (message.type === "join-room") rooms.join(socket, message);
@@ -82,13 +92,18 @@ export function createSignalingServer(options: { allowedOrigins: string[]; roomT
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  try { loadEnvFile(fileURLToPath(new URL("../../../.env.local", import.meta.url))); } catch (error) {
+    if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
+  }
   const iceConfiguration = iceConfigurationFromEnv(process.env);
+  const authenticateRoomCreation = roomCreationAuthenticatorFromEnv(process.env);
   const hostReconnectGraceMs = Number(process.env.HOST_RECONNECT_GRACE_MS ?? 30000);
   if (!Number.isInteger(hostReconnectGraceMs) || hostReconnectGraceMs < 5000 || hostReconnectGraceMs > 120000) {
     throw new Error("HOST_RECONNECT_GRACE_MS must be an integer between 5000 and 120000.");
   }
   const app = createSignalingServer({
     allowedOrigins: (process.env.ALLOWED_ORIGINS ?? "http://localhost:3000,http://localhost:3001,http://127.0.0.1:3000,http://127.0.0.1:3001").split(",").map((origin) => origin.trim()),
+    authenticateRoomCreation,
     hostReconnectGraceMs,
     ...(iceConfiguration ? { iceConfiguration } : {}),
   });

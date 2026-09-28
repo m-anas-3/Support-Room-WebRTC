@@ -5,6 +5,7 @@ import { send, sendError } from "./messages.js";
 
 type Room = {
   id: string;
+  agentId: string;
   reference: string;
   hostToken: string;
   inviteToken: string;
@@ -38,10 +39,10 @@ export class RoomRegistry {
     private issueIceConfiguration: IceConfigurationIssuer | null = null,
   ) {}
 
-  create(requestId: string, reference: string): CreatedRoom | null {
+  create(requestId: string, reference: string, agentId: string): CreatedRoom | null {
     if (this.rooms.size >= this.maxRooms) return null;
     const room: Room = {
-      id: randomUUID(), reference,
+      id: randomUUID(), agentId, reference,
       hostToken: randomBytes(32).toString("hex"),
       inviteToken: randomBytes(32).toString("hex"),
       expiresAt: Date.now() + this.ttlMs,

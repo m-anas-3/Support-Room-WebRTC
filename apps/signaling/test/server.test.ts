@@ -7,6 +7,8 @@ import { serverMessageSchema, type CreatedRoom, type ServerMessage } from "@supp
 import { createSignalingServer } from "../src/server.js";
 
 const origin = "http://localhost:3000";
+const validAccessToken = "test-agent-access-token-00000001";
+const authenticateRoomCreation = async (accessToken: string) => accessToken === validAccessToken ? { agentId: "10000000-0000-4000-8000-000000000001" } : null;
 let app: ReturnType<typeof createSignalingServer>;
 let url: string;
 const clients = new Set<WebSocket>();
@@ -62,7 +64,7 @@ async function connect(connectionOrigin = origin) {
 
 async function createRoom(client: Inbox, reference = "Ticket 42") {
   const requestId = randomUUID();
-  client.send({ type: "create-room", requestId, reference });
+  client.send({ type: "create-room", requestId, reference, accessToken: validAccessToken });
   return await client.next("room-created", (message) => message.requestId === requestId);
 }
 
@@ -71,7 +73,7 @@ function join(client: Inbox, room: CreatedRoom, role: "host" | "customer", token
 }
 
 beforeEach(async () => {
-  app = createSignalingServer({ allowedOrigins: [origin], roomTtlMs: 10_000, hostReconnectGraceMs: 1000 });
+  app = createSignalingServer({ allowedOrigins: [origin], authenticateRoomCreation, roomTtlMs: 10_000, hostReconnectGraceMs: 1000 });
   await app.listen(0);
   const address = app.server.address() as AddressInfo;
   url = `ws://127.0.0.1:${address.port}/signal`;
@@ -148,6 +150,15 @@ test("rejects invalid credentials, duplicate customers, and unauthorized roles",
   customer.send({ type: "admit" });
   assert.equal((await customer.next("error")).code, "HOST_ONLY");
 
+});
+
+test("requires an authenticated agent before creating a room", async () => {
+  const client = await connect();
+  client.send({ type: "create-room", requestId: randomUUID(), reference: "Unauthorized", accessToken: "invalid-agent-access-token-00000" });
+  assert.equal((await client.next("error")).code, "AUTH_REQUIRED");
+
+  const room = await createRoom(client, "Authorized");
+  assert.equal(room.type, "room-created");
 });
 
 test("closes the room when the host leaves and rejects disallowed origins", async () => {
@@ -231,7 +242,7 @@ test("declining frees the customer slot and malformed messages are rejected", as
 
 test("expires active rooms and rejects reuse of their credentials", async () => {
   await app.close();
-  app = createSignalingServer({ allowedOrigins: [origin], roomTtlMs: 200 });
+  app = createSignalingServer({ allowedOrigins: [origin], authenticateRoomCreation, roomTtlMs: 200 });
   await app.listen(0);
   const address = app.server.address() as AddressInfo;
   url = `ws://127.0.0.1:${address.port}/signal`;
@@ -270,6 +281,7 @@ test("issues short-lived TURN credentials only after a valid room join", async (
   const sharedSecret = "test-turn-shared-secret";
   app = createSignalingServer({
     allowedOrigins: [origin],
+    authenticateRoomCreation,
     iceConfiguration: {
       stunUrls: ["stun:stun.example.com:3478"],
       turnUrls: ["turn:turn.example.com:3478?transport=udp", "turns:turn.example.com:5349?transport=tcp"],

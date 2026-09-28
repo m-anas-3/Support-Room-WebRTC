@@ -22,7 +22,7 @@ const iceServer = z.union([
 
 // These schemas validate untrusted JSON at both ends of the socket.
 export const clientMessageSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("create-room"), requestId: z.string().uuid(), reference: z.string().trim().max(120).default("") }),
+  z.object({ type: z.literal("create-room"), requestId: z.string().uuid(), reference: z.string().trim().max(120).default(""), accessToken: z.string().min(20).max(8192) }),
   z.object({ type: z.literal("join-room"), roomId, token, role: z.enum(["host", "customer"]), name }),
   z.object({ type: z.literal("admit") }),
   z.object({ type: z.literal("decline") }),

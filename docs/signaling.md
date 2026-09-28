@@ -1,6 +1,6 @@
 # Signaling milestone
 
-This milestone adds an in-memory WebSocket signaling service for one host and one customer. It creates rooms, checks separate host and invitation tokens, tracks the waiting state, lets the host admit or decline the customer, issues short-lived TURN credentials, and forwards WebRTC offer, answer, ICE candidate, screen-share state, and camera/microphone state messages after admission.
+This milestone adds an in-memory WebSocket signaling service for one host and one customer. It authenticates agent room creation, checks separate host and invitation tokens, tracks the waiting state, lets the host admit or decline the customer, issues short-lived TURN credentials, and forwards WebRTC offer, answer, ICE candidate, screen-share state, and camera/microphone state messages after admission.
 
 The signaling server does not carry audio or video. Media flows through the browser's `RTCPeerConnection`, while the diagnostics panel reads live connection metrics and the selected candidate pair from `getStats()`.
 
@@ -25,6 +25,21 @@ pnpm dev
 Open the dashboard, create a room, copy the invitation link, and open the host room. Open the invitation in a separate browser profile or private window so it has a separate session. The customer name and admission state now travel through the signaling server.
 
 The default WebSocket endpoint is `ws://localhost:8080/signal`. Set `NEXT_PUBLIC_SIGNALING_URL` for another endpoint. The server accepts `PORT`, `HOST`, a comma-separated `ALLOWED_ORIGINS` environment variable, and `HOST_RECONNECT_GRACE_MS` (30 seconds by default).
+
+## Agent authentication
+
+Creating a room requires the signed-in agent's Supabase access token. The signaling server sends that token to the project's `/auth/v1/user` endpoint with the publishable key and creates the room only after Supabase confirms the session. Joining with an existing host or customer room capability is unchanged, so customers still do not need accounts.
+
+This verification path follows [Supabase's JWT verification guidance](https://supabase.com/docs/guides/auth/jwts) for projects that may use either asymmetric signing keys or the legacy shared-secret signing key. The access token travels only over `wss://` in production, is never stored in room state, and is not forwarded to the other participant.
+
+Set these values on the signaling service. They identify the same project used by the frontend; the publishable key is intentionally safe to use for this verification request.
+
+```text
+SUPABASE_URL=https://YOUR_PROJECT.supabase.co
+SUPABASE_PUBLISHABLE_KEY=YOUR_PUBLISHABLE_KEY
+```
+
+Local signaling startup reads `.env.local` when it exists and also accepts the frontend names `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`. Production startup fails when neither pair is configured, preventing an accidentally unprotected room-creation endpoint.
 
 For production TURN, configure these variables on the signaling service, such as Render:
 
