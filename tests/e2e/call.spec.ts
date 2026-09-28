@@ -3,8 +3,18 @@ import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 async function trackLocalMedia(page: Page) {
   await page.addInitScript(() => {
     const nativePeerConnection = window.RTCPeerConnection;
+    const nativeWebSocket = window.WebSocket;
     const peers: RTCPeerConnection[] = [];
+    const sockets: WebSocket[] = [];
     Object.defineProperty(window, "supportTestPeers", { value: peers });
+    Object.defineProperty(window, "supportTestSockets", { value: sockets });
+    window.WebSocket = class extends nativeWebSocket {
+      constructor(url: string | URL, protocols?: string | string[]) {
+        if (protocols === undefined) super(url);
+        else super(url, protocols);
+        sockets.push(this);
+      }
+    };
     window.RTCPeerConnection = class extends nativePeerConnection {
       constructor(configuration?: RTCConfiguration) { super(configuration); peers.push(this); }
       close() {
@@ -207,4 +217,32 @@ test("ending the host room releases the connected customer's devices", async ({ 
   await expect(customer.getByText("The support agent ended this room.")).toBeVisible();
   await expect.poll(() => customer.evaluate(() => Number(sessionStorage.getItem("supportroom:test-stopped-tracks") ?? 0))).toBeGreaterThanOrEqual(2);
   await expect.poll(() => customer.evaluate(() => Number(sessionStorage.getItem("supportroom:test-closed-peers") ?? 0))).toBeGreaterThanOrEqual(1);
+});
+
+test("recovers a dropped signaling socket without releasing local devices", async ({ context, page: host }) => {
+  const customer = await startCall(context, host);
+  const stoppedBefore = await Promise.all([host, customer].map((page) => page.evaluate(() => Number(sessionStorage.getItem("supportroom:test-stopped-tracks") ?? 0))));
+  const peerCountsBefore = await Promise.all([host, customer].map((page) => page.evaluate(() => (window as unknown as { supportTestPeers: RTCPeerConnection[] }).supportTestPeers.length)));
+
+  await host.evaluate(() => {
+    const sockets = (window as unknown as { supportTestSockets: WebSocket[] }).supportTestSockets;
+    const signalingSocket = sockets.findLast((socket) => socket.readyState === WebSocket.OPEN);
+    if (!signalingSocket) throw new Error("No open signaling socket was found.");
+    signalingSocket.close(4000, "Test interruption");
+  });
+
+  const admit = host.getByRole("button", { name: "Admit" });
+  await expect(admit).toBeEnabled();
+  await expect(customer.getByText("You’re in the waiting room")).toBeVisible();
+  for (const [index, page] of [host, customer].entries()) {
+    await expect.poll(() => page.evaluate(() => Number(sessionStorage.getItem("supportroom:test-stopped-tracks") ?? 0))).toBe(stoppedBefore[index]);
+  }
+
+  await admit.click();
+  await expect(host.getByText("Media: connected")).toBeVisible();
+  await expect(customer.getByText("Media: connected")).toBeVisible();
+  for (const [index, page] of [host, customer].entries()) {
+    await expect.poll(() => page.evaluate(() => (window as unknown as { supportTestPeers: RTCPeerConnection[] }).supportTestPeers.length)).toBeGreaterThan(peerCountsBefore[index]);
+    await expect.poll(() => inboundBytes(page, "audio")).toBeGreaterThan(0);
+  }
 });

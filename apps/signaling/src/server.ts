@@ -83,8 +83,13 @@ export function createSignalingServer(options: { allowedOrigins: string[]; roomT
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const iceConfiguration = iceConfigurationFromEnv(process.env);
+  const hostReconnectGraceMs = Number(process.env.HOST_RECONNECT_GRACE_MS ?? 30000);
+  if (!Number.isInteger(hostReconnectGraceMs) || hostReconnectGraceMs < 5000 || hostReconnectGraceMs > 120000) {
+    throw new Error("HOST_RECONNECT_GRACE_MS must be an integer between 5000 and 120000.");
+  }
   const app = createSignalingServer({
     allowedOrigins: (process.env.ALLOWED_ORIGINS ?? "http://localhost:3000,http://localhost:3001,http://127.0.0.1:3000,http://127.0.0.1:3001").split(",").map((origin) => origin.trim()),
+    hostReconnectGraceMs,
     ...(iceConfiguration ? { iceConfiguration } : {}),
   });
   const port = Number(process.env.PORT ?? 8080);

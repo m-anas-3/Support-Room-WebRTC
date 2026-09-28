@@ -4,13 +4,14 @@ import { ShieldCheck } from "lucide-react";
 import { CallControls } from "./call-controls";
 import { VideoTile } from "./video-tile";
 
-export function CustomerCall({ name, hostName, localStream, remoteStream, connectionState, recoveryState, error, cameraEnabled, microphoneEnabled, cameraChanging, microphoneChanging, screenSharing, remoteScreenSharing, remoteCameraEnabled, remoteMicrophoneEnabled, screenShareSupported, screenShareChanging, onToggleCamera, onToggleMicrophone, onToggleScreenShare, onLeave }: {
+export function CustomerCall({ name, hostName, localStream, remoteStream, connectionState, recoveryState, connectionNotice, error, cameraEnabled, microphoneEnabled, cameraChanging, microphoneChanging, screenSharing, remoteScreenSharing, remoteCameraEnabled, remoteMicrophoneEnabled, screenShareSupported, screenShareChanging, onToggleCamera, onToggleMicrophone, onToggleScreenShare, onLeave }: {
   name: string;
   hostName: string;
   localStream: MediaStream;
   remoteStream: MediaStream | null;
   connectionState: RTCPeerConnectionState | "idle";
   recoveryState: "idle" | "reconnecting" | "recovered";
+  connectionNotice: string | null;
   error: string | null;
   cameraEnabled: boolean;
   microphoneEnabled: boolean;
@@ -30,6 +31,7 @@ export function CustomerCall({ name, hostName, localStream, remoteStream, connec
   return (
     <main className="app-surface flex h-dvh min-h-[520px] flex-col overflow-hidden bg-[#202124] text-white">
       <section className="relative min-h-0 flex-1 p-2 pb-0 sm:p-3 sm:pb-0" aria-label="Call stage">
+        {connectionNotice && <p role="status" className="absolute top-5 left-1/2 z-20 w-[calc(100%-2rem)] max-w-2xl -translate-x-1/2 rounded-xl border border-amber-300/20 bg-amber-950/80 px-4 py-2.5 text-center text-sm text-amber-100 shadow-xl backdrop-blur">{connectionNotice}</p>}
         {error && <p role="alert" className="absolute top-5 left-1/2 z-20 w-[calc(100%-2rem)] max-w-2xl -translate-x-1/2 rounded-xl border border-red-400/20 bg-red-950/80 px-4 py-2.5 text-center text-sm text-red-100 shadow-xl backdrop-blur">{error}</p>}
         <div className="relative h-full min-h-0 overflow-hidden rounded-2xl bg-[#303134]" data-testid="customer-call-stage">
           <VideoTile className="h-full min-h-0 rounded-none border-0 bg-[#303134] shadow-none" stream={remoteStream} name={hostName} label={remoteScreenSharing ? "Support agent · Presenting" : recoveryState === "reconnecting" ? "Reconnecting…" : connectionState === "connected" ? "Support agent" : "Connecting…"} fit={remoteScreenSharing ? "contain" : "cover"} cameraEnabled={remoteScreenSharing || remoteCameraEnabled} microphoneEnabled={remoteMicrophoneEnabled} testId="remote-video" />

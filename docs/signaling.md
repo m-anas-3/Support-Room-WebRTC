@@ -2,7 +2,7 @@
 
 This milestone adds an in-memory WebSocket signaling service for one host and one customer. It creates rooms, checks separate host and invitation tokens, tracks the waiting state, lets the host admit or decline the customer, issues short-lived TURN credentials, and forwards WebRTC offer, answer, ICE candidate, screen-share state, and camera/microphone state messages after admission.
 
-The signaling server does not carry audio or video. Media now flows through the browser's `RTCPeerConnection`. The room screen shows real connection states; numeric metrics and the selected candidate remain empty until the diagnostics milestone adds `getStats()` measurements.
+The signaling server does not carry audio or video. Media flows through the browser's `RTCPeerConnection`, while the diagnostics panel reads live connection metrics and the selected candidate pair from `getStats()`.
 
 ## Concepts to learn
 
@@ -24,7 +24,7 @@ pnpm dev
 
 Open the dashboard, create a room, copy the invitation link, and open the host room. Open the invitation in a separate browser profile or private window so it has a separate session. The customer name and admission state now travel through the signaling server.
 
-The default WebSocket endpoint is `ws://localhost:8080/signal`. Set `NEXT_PUBLIC_SIGNALING_URL` for another endpoint. The server accepts `PORT`, `HOST`, and a comma-separated `ALLOWED_ORIGINS` environment variable.
+The default WebSocket endpoint is `ws://localhost:8080/signal`. Set `NEXT_PUBLIC_SIGNALING_URL` for another endpoint. The server accepts `PORT`, `HOST`, a comma-separated `ALLOWED_ORIGINS` environment variable, and `HOST_RECONNECT_GRACE_MS` (30 seconds by default).
 
 For production TURN, configure these variables on the signaling service, such as Render:
 
@@ -34,6 +34,7 @@ TURN_URLS=turn:turn.example.com:3478?transport=udp,turns:turn.example.com:5349?t
 TURN_SHARED_SECRET=the-same-random-secret-used-by-coturn
 TURN_CREDENTIAL_TTL_SECONDS=3600
 ICE_TRANSPORT_POLICY=all
+HOST_RECONNECT_GRACE_MS=30000
 ```
 
 Configure coturn with `use-auth-secret` and the same value as `static-auth-secret`. The shared secret stays on servers. Each joined browser receives only a time-limited derived credential. Set `ICE_TRANSPORT_POLICY=relay` temporarily when verifying TURN, then restore `all` so ICE can prefer a direct path.
@@ -42,5 +43,6 @@ Configure coturn with `use-auth-secret` and the same value as `static-auth-secre
 
 - Rooms live in memory and disappear when the server restarts.
 - The host secret stays in `sessionStorage`; the customer secret uses the URL fragment so it is not included in HTTP request URLs.
-- A temporary host disconnect allows 10 seconds to rejoin using the same host secret. The customer returns to waiting and must be admitted again. End room closes immediately.
+- A temporary signaling disconnect starts bounded exponential-backoff retries in the browser. Camera and microphone tracks remain available during this recovery window instead of being released immediately.
+- A disconnected host has 30 seconds to rejoin using the same host secret. After either participant rejoins, the customer returns to waiting and must be admitted again before a fresh peer connection is negotiated. End room still closes immediately.
 - Rooms still live in memory, so a signaling-service restart closes active rooms. Supabase stores durable session history but does not restore live WebSocket membership or peer negotiation.

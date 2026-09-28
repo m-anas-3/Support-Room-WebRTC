@@ -34,7 +34,7 @@ export class RoomRegistry {
   constructor(
     private ttlMs = 30 * 60 * 1000,
     private maxRooms = 1000,
-    private hostReconnectGraceMs = 10000,
+    private hostReconnectGraceMs = 30000,
     private issueIceConfiguration: IceConfigurationIssuer | null = null,
   ) {}
 

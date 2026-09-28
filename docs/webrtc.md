@@ -59,6 +59,7 @@ The sharer's self tile continues to show their camera with a **Presenting** labe
 - Existing `NEXT_PUBLIC_TURN_*` variables remain a compatibility fallback in the browser, but new deployments should use signaling-issued credentials so the shared secret never enters the frontend build.
 - A temporary ICE `disconnected` state gets a four-second grace period because browsers often recover brief network interruptions themselves.
 - A `failed` state, or a disconnection that survives the grace period, starts connection recovery. The host remains the offerer and creates an ICE-restart offer, while the customer can send an `ice-restart-request` through signaling.
+- The WebSocket has its own recovery path. A transient signaling failure retries with bounded exponential backoff for up to 25 seconds while local camera and microphone tracks remain available. Signaling recovery and ICE recovery are separate because an established WebRTC media path can outlive its WebSocket.
 - Each side keeps its current senders, tracks, and remote stream during renegotiation. Recovery gets two attempts before the call reports a terminal error.
 - SDP and candidates are re-buffered for each new local description so candidates from an ICE restart cannot overtake its offer or answer on the signaling channel.
 
@@ -84,7 +85,7 @@ SDP operations and incoming ICE messages are processed sequentially. Local candi
 
 ## Validation and current limits
 
-`pnpm test:signaling` checks admission, role and token enforcement, readiness, isolation, expiry, the host reconnect window, media-state relay, and customer-to-host ICE restart requests. `pnpm test:e2e` runs real Chromium peer connections with fake camera/microphone devices, checks inbound audio/video RTP bytes, verifies the live diagnostics panel, proves normal and rapid camera restarts resume incoming video without a new peer connection, verifies screen sharing sends the display track while the local tile stays on the camera, simulates device removal and recovery, and verifies cleanup.
+`pnpm test:signaling` checks admission, role and token enforcement, readiness, isolation, expiry, the host reconnect window, media-state relay, and customer-to-host ICE restart requests. `pnpm test:e2e` runs real Chromium peer connections with fake camera/microphone devices, checks inbound audio/video RTP bytes, verifies the live diagnostics panel, proves normal and rapid camera restarts resume incoming video without a new peer connection, verifies screen sharing sends the display track while the local tile stays on the camera, simulates device removal and recovery, proves a dropped WebSocket can rejoin without releasing local devices, and verifies cleanup.
 
 The tests use a separate `.next-e2e` directory and local test ports. Headless Chromium receives a separate fake native video track in place of the operating-system source picker, allowing the test to verify sender replacement, state relay, camera restoration, and display-track cleanup. Signaling tests verify coturn-compatible HMAC credentials and ensure they are sent only after a valid room join. Automated tests do not prove cross-network reliability or exercise your deployed TURN server.
 

@@ -61,7 +61,8 @@ export function SupportCall({ roomId }: { roomId: string }) {
     recoveryAttempts: peer.recoveryAttempts,
     onPersistenceError: handleHistoryError,
   });
-  const error = media.error || outgoingMedia.error || screenShare.error || peer.error || signaling.error;
+  const signalingReconnecting = signaling.status === "reconnecting";
+  const error = media.error || outgoingMedia.error || screenShare.error || peer.error || (signalingReconnecting ? null : signaling.error);
   const reference = signaling.room?.reference || "Support session";
 
   async function copyInvite() {
@@ -85,6 +86,7 @@ export function SupportCall({ roomId }: { roomId: string }) {
     <main className="app-surface flex h-dvh min-h-[520px] flex-col overflow-hidden bg-[#202124] text-white">
       <div className="relative min-h-0 flex-1 overflow-hidden">
         <section className="absolute inset-0 flex min-h-0 flex-col p-2 pb-0 sm:p-3 sm:pb-0" aria-label="Call stage">
+          {signalingReconnecting && <p role="status" className="mx-auto mb-2 w-full max-w-2xl shrink-0 rounded-xl border border-amber-300/20 bg-amber-950/80 px-4 py-2.5 text-center text-sm text-amber-100 shadow-xl backdrop-blur">Signaling connection interrupted. Reconnecting{signaling.reconnectAttempt ? ` · attempt ${signaling.reconnectAttempt}` : ""}… Your devices remain ready.</p>}
           {error && <p role="alert" className="mx-auto mb-2 w-full max-w-2xl shrink-0 rounded-xl border border-red-400/20 bg-red-950/80 px-4 py-2.5 text-center text-sm text-red-100 shadow-xl backdrop-blur">{error}</p>}
           <div className="relative min-h-0 flex-1 overflow-hidden rounded-2xl bg-[#303134]" data-testid="host-call-stage">
             {admitted ? (
