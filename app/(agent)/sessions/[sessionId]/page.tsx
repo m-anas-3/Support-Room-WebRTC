@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, CheckCircle2, Clock3, MonitorUp, Wifi } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
 import { SessionReportButton } from "@/components/sessions/session-report-button";
+import { SessionDiagnosticsTimeline } from "@/components/sessions/session-diagnostics-timeline";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -35,7 +36,7 @@ export default async function SessionDetailPage({ params }: PageProps<"/sessions
   const mediaFlow = activityLabel(session.media_sent, session.media_received);
 
   return (
-    <AppShell title={shortSessionId(session.id)} description={formatTimestamp(session.created_at)} actions={<SessionReportButton session={session} />}>
+    <AppShell title={shortSessionId(session.id)} description={formatTimestamp(session.created_at)} actions={<SessionReportButton session={session} samples={result.samples} />}>
       <div className="mx-auto w-full max-w-5xl space-y-6">
         <Button variant="ghost" render={<Link href="/sessions" />}><ArrowLeft />Back to sessions</Button>
 
@@ -55,7 +56,7 @@ export default async function SessionDetailPage({ params }: PageProps<"/sessions
           <CardHeader><CardTitle>Connection report</CardTitle><CardDescription>Average diagnostics collected from the host peer connection during this call</CardDescription></CardHeader>
           <CardContent>
             <Tabs defaultValue="overview">
-              <TabsList><TabsTrigger value="overview">Overview</TabsTrigger><TabsTrigger value="network">Network</TabsTrigger><TabsTrigger value="media">Media</TabsTrigger></TabsList>
+              <TabsList className="max-w-full overflow-x-auto"><TabsTrigger value="overview">Overview</TabsTrigger><TabsTrigger value="network">Network</TabsTrigger><TabsTrigger value="media">Media</TabsTrigger><TabsTrigger value="timeline">Timeline</TabsTrigger></TabsList>
               <TabsContent value="overview" className="pt-5">
                 <div className="grid gap-6 lg:grid-cols-[1fr_.8fr]">
                   <div className="rounded-xl border p-5"><div className="flex items-center justify-between gap-4 text-sm"><span className="font-medium">Overall quality</span><Badge variant="outline" className={qualityTone(session.quality_score)}>{quality}</Badge></div>{session.quality_score === null ? <p className="mt-4 text-sm leading-6 text-muted-foreground">The call ended before enough network samples were collected for a quality score.</p> : <><Progress value={session.quality_score} className="mt-4" /><p className="mt-4 text-sm leading-6 text-muted-foreground">The score combines average latency, incoming packet loss, and connection recovery attempts. Bitrate is recorded separately because healthy bitrate depends on the media being sent.</p></>}</div>
@@ -76,6 +77,10 @@ export default async function SessionDetailPage({ params }: PageProps<"/sessions
                 ["Outgoing media", activityValue(session.media_sent)],
                 ["Incoming media", activityValue(session.media_received)],
               ]} /></TabsContent>
+              <TabsContent value="timeline" className="pt-5">
+                {result.samplesError && <div role="alert" className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{result.samplesError}</div>}
+                <SessionDiagnosticsTimeline samples={result.samples} />
+              </TabsContent>
             </Tabs>
           </CardContent>
         </Card>

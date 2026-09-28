@@ -22,6 +22,26 @@ export type Database = {
           }
         },"public": {
           Tables: {
+            "support_session_diagnostic_samples": {
+                  Row: {
+                    "available_outgoing_bitrate_kbps": number | null,"connection_state": string,"incoming_packet_loss_percent": number | null,"latency_ms": number | null,"outgoing_packet_loss_percent": number | null,"receive_bitrate_kbps": number | null,"recovery_attempts": number,"sampled_at": string,"send_bitrate_kbps": number | null,"sequence": number,"session_id": string
+                  }
+                  Insert: {
+                    "available_outgoing_bitrate_kbps"?: number | null,"connection_state": string,"incoming_packet_loss_percent"?: number | null,"latency_ms"?: number | null,"outgoing_packet_loss_percent"?: number | null,"receive_bitrate_kbps"?: number | null,"recovery_attempts"?: number,"sampled_at": string,"send_bitrate_kbps"?: number | null,"sequence": number,"session_id": string
+                  }
+                  Update: {
+                    "available_outgoing_bitrate_kbps"?: number | null,"connection_state"?: string,"incoming_packet_loss_percent"?: number | null,"latency_ms"?: number | null,"outgoing_packet_loss_percent"?: number | null,"receive_bitrate_kbps"?: number | null,"recovery_attempts"?: number,"sampled_at"?: string,"send_bitrate_kbps"?: number | null,"sequence"?: number,"session_id"?: string
+                  }
+                  Relationships: [
+                    {
+                      foreignKeyName: "support_session_diagnostic_samples_session_id_fkey"
+                      columns: ["session_id"]
+                      isOneToOne: false
+                      referencedRelation: "support_sessions"
+                      referencedColumns: ["id"]
+                    }
+                  ]
+                },
             "support_sessions": {
                   Row: {
                     "agent_id": string,"agent_name": string,"average_latency_ms": number | null,"average_packet_loss_percent": number | null,"average_receive_bitrate_kbps": number | null,"average_send_bitrate_kbps": number | null,"created_at": string,"customer_name": string | null,"ended_at": string | null,"ended_reason": string | null,"id": string,"local_candidate_type": string | null,"media_received": boolean | null,"media_sent": boolean | null,"quality_score": number | null,"reconnect_count": number,"reference": string,"remote_candidate_type": string | null,"started_at": string | null,"status": Database["public"]['Enums']["support_session_status"],"transport_protocol": string | null,"updated_at": string

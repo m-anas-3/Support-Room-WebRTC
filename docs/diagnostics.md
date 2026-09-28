@@ -54,7 +54,15 @@ Audio and video are marked active only when their RTP byte counters increase bet
 
 ## Why poll every two seconds
 
-A shorter interval reacts faster but causes more `getStats()` calls, more React updates, and noisier values. A longer interval is cheaper and smoother but hides brief network changes. Two seconds is a practical troubleshooting default for a one-to-one call. A future history graph can retain samples without changing the collector.
+A shorter interval reacts faster but causes more `getStats()` calls, more React updates, and noisier values. A longer interval is cheaper and smoother but hides brief network changes. Two seconds is a practical troubleshooting default for a one-to-one call.
+
+## Historical timeline
+
+The host keeps up to 900 diagnostic samples in memory, matching a 30-minute room at the two-second sampling interval. When the call ends normally, the browser uploads the samples in batches and the session report plots latency, incoming packet loss, and send/receive bitrate over elapsed call time. The JSON report download includes the same raw samples.
+
+Samples live in `support_session_diagnostic_samples` and inherit authorization from their parent session through Row Level Security. Agents can only insert or read samples for sessions they own. The database limits each session to sequence numbers 0 through 899, bounding storage even if a client is modified.
+
+The completed summary and sample upload are independent. A failed timeline upload does not prevent the final averages and end reason from being saved. If the host browser crashes, signaling reconciliation still completes the session, but browser-only samples that were still in memory are unavailable.
 
 ## Interpretation limits
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef } from "react";
-import type { PeerDiagnostics } from "@/lib/webrtc/diagnostics";
+import { emptyPeerDiagnostics, type PeerDiagnostics } from "@/lib/webrtc/diagnostics";
 import {
   completeSessionRecord,
   hasSessionRecord,
@@ -10,8 +10,11 @@ import {
 } from "@/lib/sessions/client";
 import {
   addDiagnosticsSample,
+  captureDiagnosticSample,
   emptyDiagnosticsAccumulator,
+  maxDiagnosticSamples,
   summarizeDiagnostics,
+  type CapturedDiagnosticSample,
 } from "@/lib/sessions/types";
 
 export function useSessionHistory({
@@ -33,7 +36,9 @@ export function useSessionHistory({
 }) {
   const enabled = useRef(hasSessionRecord(roomId));
   const diagnosticsRef = useRef(emptyDiagnosticsAccumulator());
+  const samplesRef = useRef<CapturedDiagnosticSample[]>([]);
   const lastSampleRef = useRef<number | null>(null);
+  const lastConnectionStateRef = useRef(connectionState);
   const lastRoomStateRef = useRef<string | null>(null);
   const activeRef = useRef(false);
   const completedRef = useRef(false);
@@ -68,17 +73,36 @@ export function useSessionHistory({
   }, [connectionState, customerName, enqueue, roomId]);
 
   useEffect(() => {
-    if (!enabled.current || diagnostics.sampledAt === null || diagnostics.sampledAt === lastSampleRef.current) return;
-    lastSampleRef.current = diagnostics.sampledAt;
-    addDiagnosticsSample(diagnosticsRef.current, diagnostics, recoveryAttempts);
-  }, [diagnostics, recoveryAttempts]);
+    if (!enabled.current) return;
+    const hasNewDiagnostics = diagnostics.sampledAt !== null && diagnostics.sampledAt !== lastSampleRef.current;
+    const connectionChanged = connectionState !== lastConnectionStateRef.current;
+    if (!hasNewDiagnostics && !connectionChanged) return;
+    lastConnectionStateRef.current = connectionState;
+    if (hasNewDiagnostics) {
+      lastSampleRef.current = diagnostics.sampledAt;
+      addDiagnosticsSample(diagnosticsRef.current, diagnostics, recoveryAttempts);
+    }
+    if (samplesRef.current.length < maxDiagnosticSamples) {
+      samplesRef.current.push(captureDiagnosticSample(
+        hasNewDiagnostics ? diagnostics : emptyPeerDiagnostics,
+        connectionState,
+        recoveryAttempts,
+        samplesRef.current.length,
+      ));
+    }
+  }, [connectionState, diagnostics, recoveryAttempts]);
 
   const complete = useCallback(async (endedReason = "host-ended") => {
     if (!enabled.current || completedRef.current) return;
     completedRef.current = true;
     await queueRef.current.catch(() => undefined);
     try {
-      await completeSessionRecord(roomId, summarizeDiagnostics(diagnosticsRef.current), endedReason);
+      await completeSessionRecord(
+        roomId,
+        summarizeDiagnostics(diagnosticsRef.current),
+        samplesRef.current,
+        endedReason,
+      );
     } catch {
       reportError();
     }

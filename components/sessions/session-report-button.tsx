@@ -3,9 +3,9 @@
 import { Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { shortSessionId } from "@/lib/sessions/presentation";
-import { sessionDurationSeconds, type SupportSession } from "@/lib/sessions/types";
+import { sessionDurationSeconds, type SupportSession, type SupportSessionDiagnosticSample } from "@/lib/sessions/types";
 
-export function SessionReportButton({ session }: { session: SupportSession }) {
+export function SessionReportButton({ session, samples }: { session: SupportSession; samples: SupportSessionDiagnosticSample[] }) {
   function download() {
     const report = {
       session: shortSessionId(session.id),
@@ -31,6 +31,7 @@ export function SessionReportButton({ session }: { session: SupportSession }) {
         mediaSent: session.media_sent,
         mediaReceived: session.media_received,
       },
+      timeline: samples,
     };
     const url = URL.createObjectURL(new Blob([JSON.stringify(report, null, 2)], { type: "application/json" }));
     const anchor = document.createElement("a");

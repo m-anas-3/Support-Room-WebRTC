@@ -2,7 +2,7 @@
 
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/client";
-import { calculateQualityScore, type SessionDiagnosticsSummary } from "./types";
+import { calculateQualityScore, type CapturedDiagnosticSample, type SessionDiagnosticsSummary } from "./types";
 
 const persistenceKey = (roomId: string) => `supportroom:history:${roomId}`;
 
@@ -61,9 +61,21 @@ export async function markSessionActive(roomId: string, customerName: string | n
 export async function completeSessionRecord(
   roomId: string,
   summary: SessionDiagnosticsSummary,
+  samples: CapturedDiagnosticSample[],
   endedReason: string,
 ) {
   const supabase = createClient();
+  let sampleError: unknown = null;
+  try {
+    for (let offset = 0; offset < samples.length; offset += 200) {
+      const batch = samples.slice(offset, offset + 200).map((sample) => ({ ...sample, session_id: roomId }));
+      const { error } = await supabase.from("support_session_diagnostic_samples").insert(batch);
+      if (error) throw error;
+    }
+  } catch (error) {
+    sampleError = error;
+  }
+
   const { error } = await supabase
     .from("support_sessions")
     .update({
@@ -85,6 +97,7 @@ export async function completeSessionRecord(
     .eq("id", roomId);
   if (error) throw error;
   sessionStorage.removeItem(persistenceKey(roomId));
+  if (sampleError) throw sampleError;
 }
 
 function readableDatabaseError(message: string) {

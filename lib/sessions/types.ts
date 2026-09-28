@@ -2,7 +2,12 @@ import type { PeerDiagnostics } from "@/lib/webrtc/diagnostics";
 import type { Tables } from "@/lib/supabase/database.types";
 
 export type SupportSession = Tables<"support_sessions">;
+export type SupportSessionDiagnosticSample = Tables<"support_session_diagnostic_samples">;
 export type SupportSessionStatus = SupportSession["status"];
+
+export type CapturedDiagnosticSample = Omit<SupportSessionDiagnosticSample, "session_id">;
+
+export const maxDiagnosticSamples = 900;
 
 export type SessionDiagnosticsSummary = {
   averageLatencyMs: number | null;
@@ -69,6 +74,27 @@ export function addDiagnosticsSample(
   accumulator.mediaReceived = combineActivity(accumulator.mediaReceived, diagnostics.receiving.audio, diagnostics.receiving.video);
 }
 
+export function captureDiagnosticSample(
+  diagnostics: PeerDiagnostics,
+  connectionState: RTCPeerConnectionState | "idle",
+  recoveryAttempts: number,
+  sequence: number,
+  sampledAt = new Date().toISOString(),
+): CapturedDiagnosticSample {
+  return {
+    sequence,
+    sampled_at: sampledAt,
+    connection_state: connectionState,
+    latency_ms: finiteValue(diagnostics.roundTripTimeMs),
+    incoming_packet_loss_percent: percentageValue(diagnostics.incomingPacketLossPercent),
+    outgoing_packet_loss_percent: percentageValue(diagnostics.outgoingPacketLossPercent),
+    send_bitrate_kbps: finiteValue(diagnostics.sendBitrateKbps),
+    receive_bitrate_kbps: finiteValue(diagnostics.receiveBitrateKbps),
+    available_outgoing_bitrate_kbps: finiteValue(diagnostics.availableOutgoingBitrateKbps),
+    recovery_attempts: recoveryAttempts,
+  };
+}
+
 export function summarizeDiagnostics(accumulator: DiagnosticsAccumulator): SessionDiagnosticsSummary {
   return {
     averageLatencyMs: average(accumulator.latency),
@@ -116,6 +142,15 @@ function addValue(totals: Totals, value: number | null) {
   if (value === null || !Number.isFinite(value)) return;
   totals.total += value;
   totals.count += 1;
+}
+
+function finiteValue(value: number | null) {
+  return value !== null && Number.isFinite(value) ? Math.max(0, value) : null;
+}
+
+function percentageValue(value: number | null) {
+  const finite = finiteValue(value);
+  return finite === null ? null : Math.min(100, finite);
 }
 
 function average(totals: Totals) {
