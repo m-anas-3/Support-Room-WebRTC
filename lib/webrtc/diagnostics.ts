@@ -16,6 +16,7 @@ export type PeerDiagnostics = {
   incomingPacketLossPercent: number | null;
   outgoingPacketLossPercent: number | null;
   roundTripTimeMs: number | null;
+  jitterMs: number | null;
   availableOutgoingBitrateKbps: number | null;
   localCandidate: CandidateDetails | null;
   remoteCandidate: CandidateDetails | null;
@@ -42,6 +43,7 @@ export const emptyPeerDiagnostics: PeerDiagnostics = {
   incomingPacketLossPercent: null,
   outgoingPacketLossPercent: null,
   roundTripTimeMs: null,
+  jitterMs: null,
   availableOutgoingBitrateKbps: null,
   localCandidate: null,
   remoteCandidate: null,
@@ -100,6 +102,7 @@ export function collectPeerDiagnostics(report: RTCStatsReport, previous: Diagnos
   let hasLossInterval = false;
   const outgoingLossFractions: number[] = [];
   const mediaRoundTrips: number[] = [];
+  const inboundJitters: number[] = [];
 
   for (const stat of stats.values()) {
     sampledAt = Math.max(sampledAt ?? 0, stat.timestamp);
@@ -121,6 +124,8 @@ export function collectPeerDiagnostics(report: RTCStatsReport, previous: Diagnos
       const bytes = numberValue(stat.bytesReceived);
       const packets = numberValue(stat.packetsReceived);
       const lost = numberValue(stat.packetsLost);
+      const jitter = numberValue(stat.jitter);
+      if (jitter !== undefined && jitter >= 0) inboundJitters.push(jitter);
       if (bytes === undefined) continue;
       const prior = previous.get(stat.id);
       const rate = rateKbps(bytes, prior, stat.timestamp);
@@ -177,6 +182,7 @@ export function collectPeerDiagnostics(report: RTCStatsReport, previous: Diagnos
       incomingPacketLossPercent: hasLossInterval ? (lostPackets / (receivedPackets + lostPackets)) * 100 : null,
       outgoingPacketLossPercent: outgoingLossFractions.length ? (outgoingLossFractions.reduce((total, value) => total + value, 0) / outgoingLossFractions.length) * 100 : null,
       roundTripTimeMs: roundTripSeconds === undefined ? null : roundTripSeconds * 1000,
+      jitterMs: inboundJitters.length ? (inboundJitters.reduce((total, value) => total + value, 0) / inboundJitters.length) * 1000 : null,
       availableOutgoingBitrateKbps: availableOutgoingBitrate === undefined ? null : availableOutgoingBitrate / 1000,
       localCandidate: candidateDetails(localCandidateId ? stats.get(localCandidateId) : undefined),
       remoteCandidate: candidateDetails(remoteCandidateId ? stats.get(remoteCandidateId) : undefined),

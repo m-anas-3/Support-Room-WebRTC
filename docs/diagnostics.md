@@ -35,6 +35,10 @@ Send loss comes from `remote-inbound-rtp.fractionLost`. It is the loss reported 
 
 The preferred value is `currentRoundTripTime` from the selected ICE candidate pair. The browser reports it in seconds, and the UI converts it to milliseconds. If that field is absent, the collector falls back to round-trip measurements from remote inbound RTP reports.
 
+### Jitter
+
+Inbound RTP `jitter` measures variation in packet arrival time. The browser reports it in seconds for each incoming synchronization source; SupportRoom averages the available inbound values and displays milliseconds. Jitter is different from latency: packets may arrive quickly on average while still arriving at uneven intervals.
+
 ### Selected ICE route
 
 The transport record points to its active candidate pair through `selectedCandidatePairId`. The pair then points to local and remote candidate records through `localCandidateId` and `remoteCandidateId`.
@@ -55,6 +59,17 @@ Audio and video are marked active only when their RTP byte counters increase bet
 ## Why poll every two seconds
 
 A shorter interval reacts faster but causes more `getStats()` calls, more React updates, and noisier values. A longer interval is cheaper and smoother but hides brief network changes. Two seconds is a practical troubleshooting default for a one-to-one call.
+
+## Live connection health
+
+The live panel turns the latest sample into a product-level health label and troubleshooting suggestions. These thresholds are SupportRoom heuristics rather than values mandated by WebRTC:
+
+- **Poor:** at least 8% loss, 500 ms round-trip latency, 60 ms jitter, or active connection recovery.
+- **Fair:** at least 3% loss, 250 ms latency, 30 ms jitter, or a completed recovery attempt.
+- **Good:** at least 1% loss, 150 ms latency, or 20 ms jitter.
+- **Excellent:** a connected, sampled call below those thresholds.
+
+The panel checks both incoming loss and the loss reported by the remote receiver. It also compares RTP activity with the participants’ intentional camera and microphone state, so a muted microphone or disabled camera is not reported as a stalled track. Recommendations identify likely next actions without claiming a single metric proves the root cause.
 
 ## Historical timeline
 
@@ -78,3 +93,4 @@ The completed summary and sample upload are independent. A failed timeline uploa
 - [W3C WebRTC Statistics API](https://www.w3.org/TR/webrtc-stats/)
 - [W3C RTCPeerConnection.getStats() definition](https://www.w3.org/TR/webrtc/#dom-rtcpeerconnection-getstats)
 - [MDN RTCPeerConnection.getStats()](https://developer.mozilla.org/en-US/docs/Web/API/RTCPeerConnection/getStats)
+- [MDN RTCInboundRtpStreamStats.jitter](https://developer.mozilla.org/en-US/docs/Web/API/RTCInboundRtpStreamStats/jitter)

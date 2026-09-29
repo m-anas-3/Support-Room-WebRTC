@@ -111,7 +111,7 @@ export function SupportCall({ roomId }: { roomId: string }) {
               <Button variant="ghost" size="icon" aria-label="Close side panel" onClick={() => setPanel(null)}><X /></Button>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-5 [&_.text-amber-400]:text-amber-600 [&_.text-emerald-300]:text-emerald-700 [&_.text-slate-200]:text-slate-700 [&_.text-slate-300]:text-slate-700 [&_.text-slate-400]:text-slate-500 [&_.border-white\/10]:border-slate-200 [&_.bg-white\/\[0\.03\]]:bg-slate-50 [&_.bg-white\/10]:bg-slate-100" data-testid={panel === "diagnostics" ? "host-diagnostics-panel" : undefined}>
-              {panel === "diagnostics" ? <ConnectionDiagnostics signalingStatus={signaling.status} peer={peer} /> : panel === "people" ? <People hostName={agent.name} customerName={signaling.room?.customerName} admitted={admitted} /> : <CallDeviceSettings media={media} />}
+              {panel === "diagnostics" ? <ConnectionDiagnostics signalingStatus={signaling.status} peer={peer} localMedia={{ audio: media.isMicrophoneEnabled, video: screenShare.isSharing || media.isCameraEnabled }} remoteMedia={{ audio: peer.remoteMicrophoneEnabled, video: peer.remoteScreenSharing || peer.remoteCameraEnabled }} /> : panel === "people" ? <People hostName={agent.name} customerName={signaling.room?.customerName} admitted={admitted} /> : <CallDeviceSettings media={media} />}
             </div>
           </aside>
         )}

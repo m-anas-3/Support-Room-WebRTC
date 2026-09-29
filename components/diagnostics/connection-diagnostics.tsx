@@ -1,6 +1,8 @@
 "use client";
 
+import { CircleAlert, CircleCheck, LoaderCircle, TriangleAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { assessConnectionHealth, type ConnectionHealthLevel, type ExpectedMedia } from "@/lib/webrtc/connection-health";
 import type { CandidateDetails, PeerDiagnostics } from "@/lib/webrtc/diagnostics";
 
 type PeerState = {
@@ -14,10 +16,23 @@ type PeerState = {
   diagnostics: PeerDiagnostics;
 };
 
-export function ConnectionDiagnostics({ signalingStatus, peer }: { signalingStatus: string; peer: PeerState }) {
+export function ConnectionDiagnostics({ signalingStatus, peer, localMedia, remoteMedia }: {
+  signalingStatus: string;
+  peer: PeerState;
+  localMedia: ExpectedMedia;
+  remoteMedia: ExpectedMedia;
+}) {
   const connected = peer.connectionState === "connected";
   const stats = peer.diagnostics;
   const route = candidateRoute(stats.localCandidate, stats.remoteCandidate);
+  const health = assessConnectionHealth({
+    connected,
+    reconnecting: peer.recoveryState === "reconnecting",
+    recoveryAttempts: peer.recoveryAttempts,
+    diagnostics: stats,
+    localMedia,
+    remoteMedia,
+  });
 
   return <div className="space-y-5">
     <div className="flex items-center justify-between gap-3">
@@ -25,9 +40,13 @@ export function ConnectionDiagnostics({ signalingStatus, peer }: { signalingStat
       <Badge className={connected ? "bg-emerald-400/10 text-emerald-300" : "bg-white/10 text-slate-300"}>{peer.connectionState}</Badge>
     </div>
 
+    <HealthSummary level={health.level} issues={health.issues} />
+
     <div className="grid grid-cols-2 gap-3">
       <Diagnostic label="Round-trip time" value={formatLatency(stats.roundTripTimeMs)} testId="diagnostic-latency" />
+      <Diagnostic label="Packet jitter" value={formatLatency(stats.jitterMs)} testId="diagnostic-jitter" />
       <Diagnostic label="Receive loss" value={formatPercent(stats.incomingPacketLossPercent)} testId="diagnostic-packet-loss" />
+      <Diagnostic label="Send loss" value={formatPercent(stats.outgoingPacketLossPercent)} testId="diagnostic-send-packet-loss" />
       <Diagnostic label="Send bitrate" value={formatBitrate(stats.sendBitrateKbps)} testId="diagnostic-send-bitrate" />
       <Diagnostic label="Receive bitrate" value={formatBitrate(stats.receiveBitrateKbps)} testId="diagnostic-receive-bitrate" />
     </div>
@@ -36,7 +55,6 @@ export function ConnectionDiagnostics({ signalingStatus, peer }: { signalingStat
       <p className="text-xs font-medium text-slate-300">Media activity</p>
       <ActivityRow label="Microphone" sent={stats.sending.audio} received={stats.receiving.audio} />
       <ActivityRow label="Video" sent={stats.sending.video} received={stats.receiving.video} />
-      <InfoRow label="Remote-reported send loss" value={formatPercent(stats.outgoingPacketLossPercent)} />
     </div>
 
     <div className="space-y-3 border-t border-white/10 pt-5">
@@ -63,6 +81,35 @@ export function ConnectionDiagnostics({ signalingStatus, peer }: { signalingStat
       <p className="mt-1.5 text-xs leading-5 text-slate-400">Statistics refresh every two seconds. Short changes between samples may not appear.</p>
     </div>
   </div>;
+}
+
+function HealthSummary({ level, issues }: {
+  level: ConnectionHealthLevel;
+  issues: ReturnType<typeof assessConnectionHealth>["issues"];
+}) {
+  const presentation = healthPresentation(level);
+  const Icon = presentation.icon;
+  return (
+    <section className={`rounded-xl border p-3.5 ${presentation.container}`} aria-labelledby="connection-health-title">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2"><Icon className={`size-4 ${level === "checking" ? "animate-spin" : ""}`} /><p id="connection-health-title" className="text-sm font-medium">Connection health</p></div>
+        <Badge className={presentation.badge} data-testid="diagnostic-health">{presentation.label}</Badge>
+      </div>
+      {issues.length ? (
+        <ul className="mt-3 space-y-3">
+          {issues.map((issue) => <li key={issue.id} className="text-xs leading-5"><p className="font-medium">{issue.title}</p><p className="text-slate-400">{issue.guidance}</p></li>)}
+        </ul>
+      ) : <p className="mt-2 text-xs leading-5 text-slate-400">{level === "checking" ? "Collecting enough statistics to assess this connection." : "No connection problems are visible in the latest sample."}</p>}
+    </section>
+  );
+}
+
+function healthPresentation(level: ConnectionHealthLevel) {
+  if (level === "excellent") return { label: "Excellent", icon: CircleCheck, container: "border-emerald-400/20 bg-emerald-400/[0.06] text-emerald-200", badge: "bg-emerald-400/15 text-emerald-200" };
+  if (level === "good") return { label: "Good", icon: CircleCheck, container: "border-blue-400/20 bg-blue-400/[0.06] text-blue-200", badge: "bg-blue-400/15 text-blue-200" };
+  if (level === "fair") return { label: "Fair", icon: TriangleAlert, container: "border-amber-400/20 bg-amber-400/[0.06] text-amber-200", badge: "bg-amber-400/15 text-amber-200" };
+  if (level === "poor") return { label: "Poor", icon: CircleAlert, container: "border-red-400/20 bg-red-400/[0.06] text-red-200", badge: "bg-red-400/15 text-red-200" };
+  return { label: "Checking", icon: LoaderCircle, container: "border-white/10 bg-white/[0.03] text-slate-200", badge: "bg-white/10 text-slate-300" };
 }
 
 function recoveryLabel(state: PeerState["recoveryState"], attempts: number) {
