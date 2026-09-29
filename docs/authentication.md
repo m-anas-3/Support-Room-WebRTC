@@ -35,6 +35,14 @@ Proxy performs an early redirect for usability, while the agent layout verifies 
 
 The automated browser tests set `SUPPORTROOM_E2E=1` on their isolated local web server so they can continue testing WebRTC without contacting an external Supabase project. This bypass is server-only and is not configured by the application deployment examples.
 
+## Agent profile metadata
+
+The Settings page stores the agent's display name in the signed-in Supabase user's `user_metadata.full_name` field. The update runs through a Next.js Server Action, so the browser never receives credentials beyond the normal authenticated session cookies.
+
+After an update, the agent layout is revalidated. The sidebar and any other component using `AgentIdentityProvider` then receive the new name and initials.
+
+The work email is read-only in the profile form because changing an authentication email has a separate verification flow. Profile photos and organization roles should be stored in a dedicated `profiles` table when those features are implemented.
+
 ## Concepts to learn
 
 - **Authentication** proves which agent is signing in.
@@ -50,6 +58,7 @@ The automated browser tests set `SUPPORTROOM_E2E=1` on their isolated local web 
 - [Supabase: Server-Side Rendering](https://supabase.com/docs/guides/auth/server-side)
 - [Supabase: Creating an SSR client for Next.js](https://supabase.com/docs/guides/auth/server-side/creating-a-client?framework=nextjs)
 - [Supabase: Password-based authentication](https://supabase.com/docs/guides/auth/passwords)
+- [Supabase: Update a user](https://supabase.com/docs/reference/javascript/auth-updateuser)
 - [Supabase: Row Level Security](https://supabase.com/docs/guides/database/postgres/row-level-security)
 - [Next.js: Authentication](https://nextjs.org/docs/app/guides/authentication)
 - [Next.js: Proxy](https://nextjs.org/docs/app/getting-started/proxy)

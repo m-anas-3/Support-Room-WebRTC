@@ -5,7 +5,7 @@ import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function AgentLayout({ children }: { children: ReactNode }) {
-  if (!isSupabaseConfigured()) {
+  if (process.env.SUPPORTROOM_E2E === "1" || !isSupabaseConfigured()) {
     return <AgentIdentityProvider value={developmentAgent}>{children}</AgentIdentityProvider>;
   }
 
