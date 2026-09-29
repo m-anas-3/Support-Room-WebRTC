@@ -46,6 +46,7 @@ Start the agent's camera, then start the customer's preview and ask to join. Adm
 - `docs/diagnostics.md`: metric calculations, interpretation, and tradeoffs
 - `docs/authentication.md`: agent sign-in, session refresh, protected routes, and Supabase setup
 - `docs/session-history.md`: persistent call lifecycle, diagnostic summaries, RLS, and migrations
+- `docs/deployment-security.md`: browser media policies, response headers, and screen wake-lock lifecycle
 
 ## Validation
 

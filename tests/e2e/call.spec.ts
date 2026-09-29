@@ -8,6 +8,27 @@ async function trackLocalMedia(page: Page) {
     const sockets: WebSocket[] = [];
     Object.defineProperty(window, "supportTestPeers", { value: peers });
     Object.defineProperty(window, "supportTestSockets", { value: sockets });
+    Object.defineProperty(navigator, "wakeLock", {
+      configurable: true,
+      value: {
+        request: async () => {
+          const requests = Number(sessionStorage.getItem("supportroom:test-wake-lock-requests") ?? 0);
+          sessionStorage.setItem("supportroom:test-wake-lock-requests", String(requests + 1));
+          let released = false;
+          const sentinel = new EventTarget() as WakeLockSentinel;
+          Object.defineProperty(sentinel, "released", { get: () => released });
+          Object.defineProperty(sentinel, "type", { value: "screen" });
+          sentinel.release = async () => {
+            if (released) return;
+            released = true;
+            const releases = Number(sessionStorage.getItem("supportroom:test-wake-lock-releases") ?? 0);
+            sessionStorage.setItem("supportroom:test-wake-lock-releases", String(releases + 1));
+            sentinel.dispatchEvent(new Event("release"));
+          };
+          return sentinel;
+        },
+      },
+    });
     window.WebSocket = class extends nativeWebSocket {
       constructor(url: string | URL, protocols?: string | string[]) {
         if (protocols === undefined) super(url);
@@ -107,6 +128,7 @@ test("connects two real browser peers, controls tracks, and cleans up", async ({
       stats.forEach((stat) => { if (stat.type === "inbound-rtp" && stat.bytesReceived > 0) receiving.add(stat.kind); });
       return [...receiving].sort();
     })).toEqual(["audio", "video"]);
+    await expect.poll(() => page.evaluate(() => Number(sessionStorage.getItem("supportroom:test-wake-lock-requests") ?? 0))).toBeGreaterThanOrEqual(1);
   }
 
   await host.getByRole("button", { name: "Call settings" }).click();
@@ -216,6 +238,7 @@ test("connects two real browser peers, controls tracks, and cleans up", async ({
   await expect.poll(() => customer.evaluate(() => Number(sessionStorage.getItem("supportroom:test-stopped-tracks") ?? 0))).toBeGreaterThanOrEqual(2);
   await expect.poll(() => customer.evaluate(() => Number(sessionStorage.getItem("supportroom:test-stopped-display-tracks") ?? 0))).toBeGreaterThanOrEqual(1);
   await expect.poll(() => customer.evaluate(() => Number(sessionStorage.getItem("supportroom:test-closed-peers") ?? 0))).toBeGreaterThanOrEqual(1);
+  await expect.poll(() => customer.evaluate(() => Number(sessionStorage.getItem("supportroom:test-wake-lock-releases") ?? 0))).toBeGreaterThanOrEqual(1);
 
   await host.getByRole("button", { name: "End room" }).click();
   await host.getByRole("button", { name: "End room" }).last().click();

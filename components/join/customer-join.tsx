@@ -16,6 +16,7 @@ import { useLocalMedia } from "@/hooks/use-local-media";
 import { useOutgoingMedia } from "@/hooks/use-outgoing-media";
 import { usePeerConnection } from "@/hooks/use-peer-connection";
 import { useScreenShare } from "@/hooks/use-screen-share";
+import { useScreenWakeLock } from "@/hooks/use-screen-wake-lock";
 import { useSignaling } from "@/hooks/use-signaling";
 import { CustomerCall } from "@/components/room/customer-call";
 import { CallDeviceSettings } from "@/components/room/call-device-settings";
@@ -29,6 +30,7 @@ export function CustomerJoin({ roomId }: { roomId: string }) {
   const admitted = signaling.room?.customerState === "admitted";
   const isReady = media.status === "ready";
   const failed = ["error", "closed", "disconnected", "declined"].includes(signaling.status);
+  useScreenWakeLock(Boolean(admitted && !failed && media.stream));
   const peer = usePeerConnection({ role: "customer", localStream: media.stream, enabled: admitted && signaling.status === "connected", iceConfiguration: signaling.iceConfiguration, send: signaling.send, subscribeToSignals: signaling.subscribeToSignals });
   const screenShare = useScreenShare({
     cameraStream: media.stream,

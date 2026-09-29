@@ -13,6 +13,7 @@ import { useLocalMedia } from "@/hooks/use-local-media";
 import { useOutgoingMedia } from "@/hooks/use-outgoing-media";
 import { usePeerConnection } from "@/hooks/use-peer-connection";
 import { useScreenShare } from "@/hooks/use-screen-share";
+import { useScreenWakeLock } from "@/hooks/use-screen-wake-lock";
 import { useSessionHistory } from "@/hooks/use-session-history";
 import { useSignaling } from "@/hooks/use-signaling";
 import { invitationUrl, readHostRoom } from "@/lib/signaling/client";
@@ -32,6 +33,7 @@ export function SupportCall({ roomId }: { roomId: string }) {
   const admitted = signaling.room?.customerState === "admitted";
   const waitingCustomer = signaling.room?.customerState === "waiting";
   const mediaReady = media.status === "ready" && Boolean(media.stream);
+  useScreenWakeLock(admitted && mediaReady);
   const peer = usePeerConnection({ role: "host", localStream: media.stream, enabled: admitted && signaling.status === "connected", iceConfiguration: signaling.iceConfiguration, send: signaling.send, subscribeToSignals: signaling.subscribeToSignals });
   const screenShare = useScreenShare({
     cameraStream: media.stream,
