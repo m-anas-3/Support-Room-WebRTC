@@ -18,6 +18,7 @@ import { usePeerConnection } from "@/hooks/use-peer-connection";
 import { useScreenShare } from "@/hooks/use-screen-share";
 import { useSignaling } from "@/hooks/use-signaling";
 import { CustomerCall } from "@/components/room/customer-call";
+import { CallDeviceSettings } from "@/components/room/call-device-settings";
 
 export function CustomerJoin({ roomId }: { roomId: string }) {
   const media = useLocalMedia();
@@ -56,7 +57,7 @@ export function CustomerJoin({ roomId }: { roomId: string }) {
   }, [media.stream]);
 
   if (admitted && !failed && media.stream) {
-    return <CustomerCall name={name} hostName={signaling.room?.hostName ?? "Support agent"} localStream={media.stream} remoteStream={peer.remoteStream} connectionState={peer.connectionState} recoveryState={peer.recoveryState} connectionNotice={signaling.status === "reconnecting" ? `Signaling connection interrupted. Reconnecting${signaling.reconnectAttempt ? ` · attempt ${signaling.reconnectAttempt}` : ""}… Your devices remain ready.` : null} error={media.error || outgoingMedia.error || screenShare.error || peer.error || (signaling.status === "reconnecting" ? null : signaling.error)} cameraEnabled={media.isCameraEnabled} microphoneEnabled={media.isMicrophoneEnabled} cameraChanging={["requesting", "recovering"].includes(media.cameraStatus)} microphoneChanging={["requesting", "recovering"].includes(media.microphoneStatus)} screenSharing={screenShare.isSharing} remoteScreenSharing={peer.remoteScreenSharing} remoteCameraEnabled={peer.remoteCameraEnabled} remoteMicrophoneEnabled={peer.remoteMicrophoneEnabled} screenShareSupported={screenShare.supported} screenShareChanging={screenShare.isChanging} onToggleCamera={media.toggleCamera} onToggleMicrophone={media.toggleMicrophone} onToggleScreenShare={() => { if (screenShare.isSharing) void screenShare.stopScreenShare(); else void screenShare.startScreenShare(); }} onLeave={() => { screenShare.releaseScreenShare(); peer.close(); media.stopMedia(); signaling.leave(); setWaiting(false); }} />;
+    return <CustomerCall name={name} hostName={signaling.room?.hostName ?? "Support agent"} localStream={media.stream} remoteStream={peer.remoteStream} connectionState={peer.connectionState} recoveryState={peer.recoveryState} connectionNotice={signaling.status === "reconnecting" ? `Signaling connection interrupted. Reconnecting${signaling.reconnectAttempt ? ` · attempt ${signaling.reconnectAttempt}` : ""}… Your devices remain ready.` : null} error={media.error || outgoingMedia.error || screenShare.error || peer.error || (signaling.status === "reconnecting" ? null : signaling.error)} cameraEnabled={media.isCameraEnabled} microphoneEnabled={media.isMicrophoneEnabled} cameraChanging={["requesting", "recovering"].includes(media.cameraStatus)} microphoneChanging={["requesting", "recovering"].includes(media.microphoneStatus)} screenSharing={screenShare.isSharing} remoteScreenSharing={peer.remoteScreenSharing} remoteCameraEnabled={peer.remoteCameraEnabled} remoteMicrophoneEnabled={peer.remoteMicrophoneEnabled} screenShareSupported={screenShare.supported} screenShareChanging={screenShare.isChanging} speakerId={media.selectedSpeakerId} deviceSettings={<CallDeviceSettings media={media} />} onSpeakerError={media.reportSpeakerError} onToggleCamera={media.toggleCamera} onToggleMicrophone={media.toggleMicrophone} onToggleScreenShare={() => { if (screenShare.isSharing) void screenShare.stopScreenShare(); else void screenShare.startScreenShare(); }} onLeave={() => { screenShare.releaseScreenShare(); peer.close(); media.stopMedia(); signaling.leave(); setWaiting(false); }} />;
   }
 
   return (
@@ -74,6 +75,7 @@ export function CustomerJoin({ roomId }: { roomId: string }) {
             <DeviceToggle icon={Camera} label="Camera" detail={media.stream?.getVideoTracks()[0]?.label || "Start preview to check"} checked={media.isCameraEnabled} disabled={!isReady} onCheckedChange={media.toggleCamera} />
             <DeviceToggle icon={Mic} label="Microphone" detail={media.stream?.getAudioTracks()[0]?.label || "Start preview to check"} checked={media.isMicrophoneEnabled} disabled={!isReady} onCheckedChange={media.toggleMicrophone} />
           </div>
+          {isReady && <Card className="mt-4 border shadow-sm ring-0"><CardHeader><CardTitle>Call devices</CardTitle><CardDescription>Choose the camera, microphone, and speaker for this call.</CardDescription></CardHeader><CardContent><CallDeviceSettings media={media} /></CardContent></Card>}
           {isReady && <div className="mt-4 space-y-2"><p className="text-xs text-muted-foreground">{media.isMicrophoneEnabled ? "Speak to test your microphone" : "Microphone muted"}</p><Progress value={media.isMicrophoneEnabled ? media.audioLevel : 0} className="h-1.5" /><Button variant="ghost" size="sm" onClick={media.stopMedia}>Stop preview</Button></div>}
           {media.error && <p role="alert" className="mt-3 text-sm text-destructive">{media.error}</p>}
         </section>

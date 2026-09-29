@@ -18,9 +18,10 @@ import { useSignaling } from "@/hooks/use-signaling";
 import { invitationUrl, readHostRoom } from "@/lib/signaling/client";
 import { cn } from "@/lib/utils";
 import { CallControls } from "./call-controls";
+import { CallDeviceSettings } from "./call-device-settings";
 import { VideoTile } from "./video-tile";
 
-type Panel = "diagnostics" | "people" | null;
+type Panel = "diagnostics" | "people" | "devices" | null;
 
 export function SupportCall({ roomId }: { roomId: string }) {
   const router = useRouter();
@@ -64,6 +65,8 @@ export function SupportCall({ roomId }: { roomId: string }) {
   const signalingReconnecting = signaling.status === "reconnecting";
   const error = media.error || outgoingMedia.error || screenShare.error || peer.error || (signalingReconnecting ? null : signaling.error);
   const reference = signaling.room?.reference || "Support session";
+  const panelTitle = panel === "diagnostics" ? "Connection details" : panel === "people" ? "People" : "Call settings";
+  const panelDescription = panel === "diagnostics" ? "Live call quality" : panel === "people" ? "Participants in this room" : "Camera, microphone, and speaker";
 
   async function copyInvite() {
     const created = readHostRoom(roomId);
@@ -90,7 +93,7 @@ export function SupportCall({ roomId }: { roomId: string }) {
           {error && <p role="alert" className="mx-auto mb-2 w-full max-w-2xl shrink-0 rounded-xl border border-red-400/20 bg-red-950/80 px-4 py-2.5 text-center text-sm text-red-100 shadow-xl backdrop-blur">{error}</p>}
           <div className="relative min-h-0 flex-1 overflow-hidden rounded-2xl bg-[#303134]" data-testid="host-call-stage">
             {admitted ? (
-              <VideoTile className="h-full min-h-0 rounded-none border-0 bg-[#303134] shadow-none" stream={peer.remoteStream} name={signaling.room?.customerName ?? "Customer"} label={peer.remoteScreenSharing ? "Customer · Presenting" : peer.recoveryState === "reconnecting" ? "Reconnecting…" : peer.connectionState === "connected" ? "Customer" : "Connecting…"} fit={peer.remoteScreenSharing ? "contain" : "cover"} cameraEnabled={peer.remoteScreenSharing || peer.remoteCameraEnabled} microphoneEnabled={peer.remoteMicrophoneEnabled} testId="remote-video" />
+              <VideoTile className="h-full min-h-0 rounded-none border-0 bg-[#303134] shadow-none" stream={peer.remoteStream} name={signaling.room?.customerName ?? "Customer"} label={peer.remoteScreenSharing ? "Customer · Presenting" : peer.recoveryState === "reconnecting" ? "Reconnecting…" : peer.connectionState === "connected" ? "Customer" : "Connecting…"} fit={peer.remoteScreenSharing ? "contain" : "cover"} cameraEnabled={peer.remoteScreenSharing || peer.remoteCameraEnabled} microphoneEnabled={peer.remoteMicrophoneEnabled} speakerId={media.selectedSpeakerId} onSpeakerError={media.reportSpeakerError} testId="remote-video" />
             ) : (
               <WaitingTile className="h-full min-h-0 rounded-none border-0" customerName={signaling.room?.customerName} connected={signaling.status === "connected"} waiting={waitingCustomer} error={signaling.error} canAdmit={mediaReady} onDecline={() => signaling.send({ type: "decline" })} onAdmit={() => signaling.send({ type: "admit" })} />
             )}
@@ -102,13 +105,13 @@ export function SupportCall({ roomId }: { roomId: string }) {
         </section>
 
         {panel && (
-          <aside className="absolute inset-y-2 right-2 z-30 flex w-[calc(100%-1rem)] max-w-[380px] flex-col overflow-hidden rounded-2xl border border-black/10 bg-white text-slate-900 shadow-2xl sm:inset-y-3 sm:right-3" aria-label={panel === "diagnostics" ? "Connection diagnostics" : "People"}>
+          <aside className="absolute inset-y-2 right-2 z-30 flex w-[calc(100%-1rem)] max-w-[380px] flex-col overflow-hidden rounded-2xl border border-black/10 bg-white text-slate-900 shadow-2xl sm:inset-y-3 sm:right-3" aria-label={panelTitle}>
             <div className="flex h-16 shrink-0 items-center justify-between border-b px-5">
-              <div><h2 className="text-base font-semibold">{panel === "diagnostics" ? "Connection details" : "People"}</h2><p className="text-xs text-slate-500">{panel === "diagnostics" ? "Live call quality" : "Participants in this room"}</p></div>
+              <div><h2 className="text-base font-semibold">{panelTitle}</h2><p className="text-xs text-slate-500">{panelDescription}</p></div>
               <Button variant="ghost" size="icon" aria-label="Close side panel" onClick={() => setPanel(null)}><X /></Button>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-5 [&_.text-amber-400]:text-amber-600 [&_.text-emerald-300]:text-emerald-700 [&_.text-slate-200]:text-slate-700 [&_.text-slate-300]:text-slate-700 [&_.text-slate-400]:text-slate-500 [&_.border-white\/10]:border-slate-200 [&_.bg-white\/\[0\.03\]]:bg-slate-50 [&_.bg-white\/10]:bg-slate-100" data-testid={panel === "diagnostics" ? "host-diagnostics-panel" : undefined}>
-              {panel === "diagnostics" ? <ConnectionDiagnostics signalingStatus={signaling.status} peer={peer} /> : <People hostName={agent.name} customerName={signaling.room?.customerName} admitted={admitted} />}
+              {panel === "diagnostics" ? <ConnectionDiagnostics signalingStatus={signaling.status} peer={peer} /> : panel === "people" ? <People hostName={agent.name} customerName={signaling.room?.customerName} admitted={admitted} /> : <CallDeviceSettings media={media} />}
             </div>
           </aside>
         )}
@@ -120,7 +123,7 @@ export function SupportCall({ roomId }: { roomId: string }) {
           <div className="mt-0.5 flex items-center gap-1.5 text-xs text-[#bdc1c6]"><span className={cn("size-1.5 rounded-full", peer.connectionState === "connected" ? "bg-[#81c995]" : "bg-[#fdd663]")} /><span>Media: {peer.recoveryState === "reconnecting" ? "reconnecting" : peer.connectionState}</span><span className="hidden md:inline">· Private room</span></div>
         </div>
 
-        <CallControls microphoneEnabled={media.isMicrophoneEnabled} cameraEnabled={media.isCameraEnabled} mediaReady={mediaReady} cameraChanging={["requesting", "recovering"].includes(media.cameraStatus)} microphoneChanging={["requesting", "recovering"].includes(media.microphoneStatus)} screenShareReady={peer.connectionState === "connected"} screenSharing={screenShare.isSharing} screenShareSupported={screenShare.supported} screenShareChanging={screenShare.isChanging} host onToggleMicrophone={media.toggleMicrophone} onToggleCamera={media.toggleCamera} onToggleScreenShare={() => { if (screenShare.isSharing) void screenShare.stopScreenShare(); else void screenShare.startScreenShare(); }} onLeave={endRoom} />
+        <CallControls microphoneEnabled={media.isMicrophoneEnabled} cameraEnabled={media.isCameraEnabled} mediaReady={mediaReady} cameraChanging={["requesting", "recovering"].includes(media.cameraStatus)} microphoneChanging={["requesting", "recovering"].includes(media.microphoneStatus)} screenShareReady={peer.connectionState === "connected"} screenSharing={screenShare.isSharing} screenShareSupported={screenShare.supported} screenShareChanging={screenShare.isChanging} host onToggleMicrophone={media.toggleMicrophone} onToggleCamera={media.toggleCamera} onToggleScreenShare={() => { if (screenShare.isSharing) void screenShare.stopScreenShare(); else void screenShare.startScreenShare(); }} onOpenSettings={() => setPanel((current) => current === "devices" ? null : "devices")} onLeave={endRoom} />
 
         <div className="flex min-w-0 items-center justify-end gap-1">
           <FooterButton label="Connection diagnostics" active={panel === "diagnostics"} icon={Activity} onClick={() => setPanel((current) => current === "diagnostics" ? null : "diagnostics")} />

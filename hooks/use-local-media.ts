@@ -5,13 +5,22 @@ import { useCallback, useEffect, useRef, useState } from "react";
 type MediaStatus = "idle" | "requesting" | "ready" | "error";
 type DeviceStatus = "idle" | "requesting" | "ready" | "off" | "recovering" | "unavailable";
 
-type MediaDevices = {
+type AvailableMediaDevices = {
   cameras: MediaDeviceInfo[];
   microphones: MediaDeviceInfo[];
   speakers: MediaDeviceInfo[];
 };
 
-const emptyDevices: MediaDevices = { cameras: [], microphones: [], speakers: [] };
+const emptyDevices: AvailableMediaDevices = { cameras: [], microphones: [], speakers: [] };
+const devicePreferenceKeys = {
+  camera: "supportroom:device:camera",
+  microphone: "supportroom:device:microphone",
+  speaker: "supportroom:device:speaker",
+} as const;
+
+type MediaDevicesWithAudioOutput = MediaDevices & {
+  selectAudioOutput?: (options?: { deviceId?: string }) => Promise<MediaDeviceInfo>;
+};
 
 function stopTracks(stream: MediaStream | null) {
   stream?.getTracks().forEach((track) => track.stop());
@@ -31,6 +40,18 @@ function getMediaErrorMessage(error: unknown, device = "camera and microphone") 
 
 function capitalize(value: string) {
   return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function readPreference(key: string) {
+  try { return localStorage.getItem(key) ?? ""; }
+  catch { return ""; }
+}
+
+function savePreference(key: string, value: string) {
+  try {
+    if (value) localStorage.setItem(key, value);
+    else localStorage.removeItem(key);
+  } catch { /* Device preferences are optional. */ }
 }
 
 function videoConstraints(deviceId?: string): MediaTrackConstraints {
@@ -73,6 +94,25 @@ async function requestMicrophone(deviceId?: string) {
   }
 }
 
+async function requestMedia(cameraEnabled: boolean, cameraId?: string, microphoneId?: string) {
+  const constraints: MediaStreamConstraints = {
+    video: cameraEnabled ? videoConstraints(cameraId) : false,
+    audio: audioConstraints(microphoneId),
+  };
+
+  try {
+    return await navigator.mediaDevices.getUserMedia(constraints);
+  } catch (error) {
+    const hasRememberedDevice = Boolean((cameraEnabled && cameraId) || microphoneId);
+    if (!hasRememberedDevice || !shouldTryDefaultDevice(error)) throw error;
+
+    return navigator.mediaDevices.getUserMedia({
+      video: cameraEnabled ? videoConstraints() : false,
+      audio: audioConstraints(),
+    });
+  }
+}
+
 export function useLocalMedia() {
   const streamRef = useRef<MediaStream | null>(null);
   const videoTrackRef = useRef<MediaStreamTrack | null>(null);
@@ -84,6 +124,7 @@ export function useLocalMedia() {
   const audioRequestIdRef = useRef(0);
   const selectedCameraIdRef = useRef("");
   const selectedMicrophoneIdRef = useRef("");
+  const selectedSpeakerIdRef = useRef("");
   const cameraWantedRef = useRef(true);
   const microphoneWantedRef = useRef(true);
   const mountedRef = useRef(true);
@@ -95,12 +136,17 @@ export function useLocalMedia() {
   const [cameraStatus, setCameraStatus] = useState<DeviceStatus>("idle");
   const [microphoneStatus, setMicrophoneStatus] = useState<DeviceStatus>("idle");
   const [error, setError] = useState<string | null>(null);
-  const [devices, setDevices] = useState<MediaDevices>(emptyDevices);
+  const [devices, setDevices] = useState<AvailableMediaDevices>(emptyDevices);
   const [selectedCameraId, setSelectedCameraId] = useState("");
   const [selectedMicrophoneId, setSelectedMicrophoneId] = useState("");
+  const [selectedSpeakerId, setSelectedSpeakerId] = useState("");
+  const [speakerError, setSpeakerError] = useState<string | null>(null);
   const [isCameraEnabled, setIsCameraEnabled] = useState(true);
   const [isMicrophoneEnabled, setIsMicrophoneEnabled] = useState(true);
   const [audioLevel, setAudioLevel] = useState(0);
+  const speakerSelectionSupported = typeof HTMLMediaElement !== "undefined" && "setSinkId" in HTMLMediaElement.prototype;
+  const speakerPromptSupported = typeof navigator !== "undefined"
+    && typeof (navigator.mediaDevices as MediaDevicesWithAudioOutput | undefined)?.selectAudioOutput === "function";
 
   const refreshDevices = useCallback(async () => {
     if (!navigator.mediaDevices?.enumerateDevices) return [];
@@ -178,6 +224,7 @@ export function useLocalMedia() {
       if (resolvedId) {
         selectedCameraIdRef.current = resolvedId;
         setSelectedCameraId(resolvedId);
+        savePreference(devicePreferenceKeys.camera, resolvedId);
       }
       await refreshDevices();
     } catch (cameraError) {
@@ -219,6 +266,7 @@ export function useLocalMedia() {
       if (resolvedId) {
         selectedMicrophoneIdRef.current = resolvedId;
         setSelectedMicrophoneId(resolvedId);
+        savePreference(devicePreferenceKeys.microphone, resolvedId);
       }
       await refreshDevices();
     } catch (microphoneError) {
@@ -255,13 +303,13 @@ export function useLocalMedia() {
 
     const cameraId = overrides?.cameraId ?? selectedCameraIdRef.current;
     const microphoneId = overrides?.microphoneId ?? selectedMicrophoneIdRef.current;
-    const constraints: MediaStreamConstraints = {
-      video: cameraWantedRef.current ? videoConstraints(cameraId) : false,
-      audio: audioConstraints(microphoneId),
-    };
 
     try {
-      const nextStream = await navigator.mediaDevices.getUserMedia(constraints);
+      const nextStream = await requestMedia(
+        cameraWantedRef.current,
+        cameraId,
+        microphoneId,
+      );
       if (!mountedRef.current || requestId !== requestIdRef.current) {
         stopTracks(nextStream);
         return;
@@ -286,10 +334,12 @@ export function useLocalMedia() {
       if (videoDeviceId) {
         selectedCameraIdRef.current = videoDeviceId;
         setSelectedCameraId(videoDeviceId);
+        savePreference(devicePreferenceKeys.camera, videoDeviceId);
       }
       if (audioDeviceId) {
         selectedMicrophoneIdRef.current = audioDeviceId;
         setSelectedMicrophoneId(audioDeviceId);
+        savePreference(devicePreferenceKeys.microphone, audioDeviceId);
       }
       await refreshDevices();
     } catch (mediaError) {
@@ -356,14 +406,72 @@ export function useLocalMedia() {
   const selectCamera = useCallback(async (deviceId: string) => {
     selectedCameraIdRef.current = deviceId;
     setSelectedCameraId(deviceId);
+    savePreference(devicePreferenceKeys.camera, deviceId);
     if (videoTrackRef.current) await startCamera(deviceId);
   }, [startCamera]);
 
   const selectMicrophone = useCallback(async (deviceId: string) => {
     selectedMicrophoneIdRef.current = deviceId;
     setSelectedMicrophoneId(deviceId);
+    savePreference(devicePreferenceKeys.microphone, deviceId);
     if (audioTrackRef.current) await startMicrophone(deviceId, false, microphoneWantedRef.current);
   }, [startMicrophone]);
+
+  const selectSpeaker = useCallback((deviceId: string) => {
+    const normalized = deviceId === "default" ? "" : deviceId;
+    selectedSpeakerIdRef.current = normalized;
+    setSelectedSpeakerId(normalized);
+    setSpeakerError(null);
+    savePreference(devicePreferenceKeys.speaker, normalized);
+  }, []);
+
+  const requestSpeaker = useCallback(async () => {
+    const mediaDevices = navigator.mediaDevices as MediaDevicesWithAudioOutput | undefined;
+    if (!mediaDevices?.selectAudioOutput) {
+      setSpeakerError("Choose the speaker from your device settings. This browser does not support in-app output selection.");
+      return;
+    }
+    try {
+      const selected = await mediaDevices.selectAudioOutput(
+        selectedSpeakerIdRef.current ? { deviceId: selectedSpeakerIdRef.current } : undefined,
+      );
+      selectedSpeakerIdRef.current = selected.deviceId;
+      setSelectedSpeakerId(selected.deviceId);
+      setSpeakerError(null);
+      savePreference(devicePreferenceKeys.speaker, selected.deviceId);
+      await refreshDevices();
+    } catch (selectionError) {
+      if (selectionError instanceof DOMException && selectionError.name === "NotAllowedError") {
+        setSpeakerError("Speaker selection was blocked. Allow speaker access in your browser and try again.");
+      } else if (selectionError instanceof DOMException && selectionError.name === "InvalidStateError") {
+        setSpeakerError("Choose speaker must be started from this button.");
+      } else {
+        setSpeakerError("The selected speaker could not be opened. Your system default is still active.");
+      }
+    }
+  }, [refreshDevices]);
+
+  const reportSpeakerError = useCallback((message: string | null) => {
+    setSpeakerError(message);
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    queueMicrotask(() => {
+      if (!active) return;
+      const cameraId = readPreference(devicePreferenceKeys.camera);
+      const microphoneId = readPreference(devicePreferenceKeys.microphone);
+      const speakerId = readPreference(devicePreferenceKeys.speaker);
+      selectedCameraIdRef.current = cameraId;
+      selectedMicrophoneIdRef.current = microphoneId;
+      selectedSpeakerIdRef.current = speakerId;
+      setSelectedCameraId(cameraId);
+      setSelectedMicrophoneId(microphoneId);
+      setSelectedSpeakerId(speakerId);
+      void refreshDevices();
+    });
+    return () => { active = false; };
+  }, [refreshDevices]);
 
   useEffect(() => {
     if (!audioTrack || !isMicrophoneEnabled) return;
@@ -479,6 +587,10 @@ export function useLocalMedia() {
     devices,
     selectedCameraId,
     selectedMicrophoneId,
+    selectedSpeakerId,
+    speakerSelectionSupported,
+    speakerPromptSupported,
+    speakerError,
     isCameraEnabled,
     isMicrophoneEnabled,
     audioLevel,
@@ -488,5 +600,8 @@ export function useLocalMedia() {
     toggleMicrophone,
     selectCamera,
     selectMicrophone,
+    selectSpeaker,
+    requestSpeaker,
+    reportSpeakerError,
   };
 }

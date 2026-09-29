@@ -109,6 +109,19 @@ test("connects two real browser peers, controls tracks, and cleans up", async ({
     })).toEqual(["audio", "video"]);
   }
 
+  await host.getByRole("button", { name: "Call settings" }).click();
+  const hostSettings = host.getByRole("complementary", { name: "Call settings" });
+  await expect(hostSettings.getByText("Camera", { exact: true })).toBeVisible();
+  await expect(hostSettings.getByText("Microphone", { exact: true })).toBeVisible();
+  await expect(hostSettings.getByText("Speaker", { exact: true })).toBeVisible();
+  await hostSettings.getByRole("button", { name: "Close side panel" }).click();
+
+  await customer.getByRole("button", { name: "Call settings" }).click();
+  const customerSettings = customer.getByRole("complementary", { name: "Call settings" });
+  await expect(customerSettings.getByText("Camera", { exact: true })).toBeVisible();
+  await expect(customerSettings.getByText("Microphone", { exact: true })).toBeVisible();
+  await customerSettings.getByRole("button", { name: "Close call settings" }).click();
+
   await expect(host.getByTestId("host-diagnostics-panel")).toHaveCount(0);
   await host.getByRole("button", { name: "Connection diagnostics" }).click();
   await expect(host.getByTestId("diagnostic-send-bitrate")).not.toHaveText("—");

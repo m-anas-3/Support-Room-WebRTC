@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { Camera, CheckCircle2, Loader2, Mic, MicOff, RotateCcw, ShieldCheck, TriangleAlert, VideoOff, Volume2 } from "lucide-react";
 
 import { AppShell } from "@/components/layout/app-shell";
@@ -17,7 +17,6 @@ import { useAgentIdentity } from "@/components/auth/agent-identity";
 export function DevicePlayground() {
   const agent = useAgentIdentity();
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [selectedSpeakerId, setSelectedSpeakerId] = useState("default");
   const {
     stream,
     status,
@@ -25,6 +24,10 @@ export function DevicePlayground() {
     devices,
     selectedCameraId,
     selectedMicrophoneId,
+    selectedSpeakerId,
+    speakerSelectionSupported,
+    speakerPromptSupported,
+    speakerError,
     isCameraEnabled,
     isMicrophoneEnabled,
     audioLevel,
@@ -34,6 +37,8 @@ export function DevicePlayground() {
     toggleMicrophone,
     selectCamera,
     selectMicrophone,
+    selectSpeaker,
+    requestSpeaker,
   } = useLocalMedia();
 
   const isReady = status === "ready";
@@ -78,7 +83,7 @@ export function DevicePlayground() {
               <CardContent className="space-y-5">
                 <Field><FieldLabel>Camera</FieldLabel><Select value={selectedCameraId || null} onValueChange={(value) => value && void selectCamera(value)} disabled={!isReady || isRequesting}><SelectTrigger className="w-full"><SelectValue placeholder="Start preview to discover cameras" /></SelectTrigger><SelectContent>{devices.cameras.map((device, index) => <SelectItem key={device.deviceId} value={device.deviceId}>{device.label || `Camera ${index + 1}`}</SelectItem>)}</SelectContent></Select><FieldDescription>{videoSettings?.width && videoSettings.height ? `${videoSettings.width} × ${videoSettings.height}${videoSettings.frameRate ? ` at ${Math.round(videoSettings.frameRate)} fps` : ""}` : "Camera settings appear after access is granted."}</FieldDescription></Field>
                 <Field><FieldLabel>Microphone</FieldLabel><Select value={selectedMicrophoneId || null} onValueChange={(value) => value && void selectMicrophone(value)} disabled={!isReady || isRequesting}><SelectTrigger className="w-full"><SelectValue placeholder="Start preview to discover microphones" /></SelectTrigger><SelectContent>{devices.microphones.map((device, index) => <SelectItem key={device.deviceId} value={device.deviceId}>{device.label || `Microphone ${index + 1}`}</SelectItem>)}</SelectContent></Select></Field>
-                <Field><FieldLabel>Speaker</FieldLabel><Select value={selectedSpeakerId} onValueChange={(value) => value && setSelectedSpeakerId(value)} disabled={!isReady}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="default">System default</SelectItem>{devices.speakers.filter((device) => device.deviceId !== "default").map((device, index) => <SelectItem key={device.deviceId} value={device.deviceId}>{device.label || `Speaker ${index + 1}`}</SelectItem>)}</SelectContent></Select><FieldDescription>Output selection will apply to the customer’s audio during calls.</FieldDescription></Field>
+                <Field><FieldLabel>Speaker</FieldLabel><Select value={selectedSpeakerId || "default"} onValueChange={(value) => value && selectSpeaker(value)} disabled={!isReady || !speakerSelectionSupported}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="default">System default</SelectItem>{devices.speakers.filter((device) => device.deviceId !== "default").map((device, index) => <SelectItem key={device.deviceId} value={device.deviceId}>{device.label || `Speaker ${index + 1}`}</SelectItem>)}</SelectContent></Select>{speakerPromptSupported && speakerSelectionSupported && <Button type="button" variant="outline" size="sm" onClick={() => void requestSpeaker()}><Volume2 />Choose another speaker</Button>}<FieldDescription>{speakerSelectionSupported ? "This output will be used for the other participant’s audio." : "Choose the output from your device’s sound controls in this browser."}</FieldDescription>{speakerError && <p role="alert" className="text-xs text-destructive">{speakerError}</p>}</Field>
               </CardContent>
             </Card>
 

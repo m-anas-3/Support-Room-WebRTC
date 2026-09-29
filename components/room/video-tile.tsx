@@ -5,13 +5,15 @@ import { Mic, MicOff, UserRound, VideoOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-export function VideoTile({ stream, name, label, local = false, cameraEnabled = true, microphoneEnabled, action, testId, fit = "cover", compact = false, className }: {
+export function VideoTile({ stream, name, label, local = false, cameraEnabled = true, microphoneEnabled, speakerId, onSpeakerError, action, testId, fit = "cover", compact = false, className }: {
   stream: MediaStream | null;
   name: string;
   label: string;
   local?: boolean;
   cameraEnabled?: boolean;
   microphoneEnabled?: boolean;
+  speakerId?: string;
+  onSpeakerError?: (message: string | null) => void;
   action?: ReactNode;
   testId?: string;
   fit?: "cover" | "contain";
@@ -58,6 +60,29 @@ export function VideoTile({ stream, name, label, local = false, cameraEnabled = 
       video.srcObject = null;
     };
   }, [stream]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || local || speakerId === undefined) return;
+    if (typeof video.setSinkId !== "function") {
+      if (speakerId) onSpeakerError?.("Use your device’s sound controls to choose an output in this browser.");
+      return;
+    }
+    let active = true;
+    void video.setSinkId(speakerId)
+      .then(() => { if (active) onSpeakerError?.(null); })
+      .catch((sinkError: unknown) => {
+        if (!active) return;
+        if (sinkError instanceof DOMException && sinkError.name === "NotAllowedError") {
+          onSpeakerError?.("This speaker needs browser permission. Choose it again from Call settings.");
+        } else if (sinkError instanceof DOMException && sinkError.name === "NotFoundError") {
+          onSpeakerError?.("That speaker is no longer connected. Your current output remains active.");
+        } else {
+          onSpeakerError?.("The speaker could not be changed. Your current output remains active.");
+        }
+      });
+    return () => { active = false; };
+  }, [local, onSpeakerError, speakerId]);
 
   return (
     <div className={cn("relative min-h-[280px] overflow-hidden rounded-xl border border-white/10 bg-[#202b3d] shadow-xl", className)} data-testid={testId}>

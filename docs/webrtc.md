@@ -39,6 +39,14 @@ The sharer's self tile continues to show their camera with a **Presenting** labe
 - `devicechange` refreshes the available device list and retries a wanted device that was previously unavailable.
 - A small `media-state` signaling message lets the remote interface distinguish intentional camera/microphone state from network loss. It contains no media.
 
+## Device selection
+
+Camera and microphone choices are stored only in the current browser. When a participant changes an input during a call, SupportRoom requests a new track and passes it to the existing `RTCRtpSender.replaceTrack()` method. The peer connection, admission state, and healthy media kind remain intact. A muted microphone stays muted after switching.
+
+Speaker routing is separate from WebRTC capture. When supported, the remote video element uses [`HTMLMediaElement.setSinkId()`](https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/setSinkId) to direct received audio to the selected output. Some browsers require the native [`MediaDevices.selectAudioOutput()`](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/selectAudioOutput) prompt before a non-default speaker can be used. Browsers without these APIs continue through the operating system’s selected output.
+
+Output selection requires HTTPS outside localhost and may be controlled by the `speaker-selection` Permissions Policy. Device IDs are origin-scoped preferences; no device labels or identifiers are sent to signaling or Supabase.
+
 ## Connection flow
 
 1. Both participants explicitly start their camera and microphone preview.
@@ -97,6 +105,8 @@ The tests use a separate `.next-e2e` directory and local test ports. Headless Ch
 - [MDN: MediaStreamTrack.enabled](https://developer.mozilla.org/en-US/docs/Web/API/MediaStreamTrack/enabled)
 - [MDN: MediaStreamTrack.stop](https://developer.mozilla.org/en-US/docs/Web/API/MediaStreamTrack/stop)
 - [MDN: MediaDevices devicechange](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/devicechange_event)
+- [W3C: Audio Output Devices API](https://www.w3.org/TR/audio-output/)
+- [MDN: HTMLMediaElement.setSinkId](https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/setSinkId)
 - [MDN: closing a peer connection](https://developer.mozilla.org/en-US/docs/Web/API/RTCPeerConnection/close)
 - [MDN: getDisplayMedia](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getDisplayMedia)
 - [MDN: replaceTrack](https://developer.mozilla.org/en-US/docs/Web/API/RTCRtpSender/replaceTrack)
