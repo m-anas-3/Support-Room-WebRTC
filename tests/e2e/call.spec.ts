@@ -88,6 +88,8 @@ async function startCall(context: BrowserContext, host: Page) {
   await customer.getByLabel("Your name").fill("Jordan Taylor");
   await customer.getByRole("button", { name: "Ask to join" }).click();
 
+  await expect(host.getByText("Jordan Taylor is waiting to join")).toBeVisible();
+
   const admit = host.getByRole("button", { name: "Admit" });
   await expect(admit).toBeEnabled();
   for (const page of [host, customer]) {

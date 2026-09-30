@@ -3,6 +3,7 @@
 import { createContext, useContext, type ReactNode } from "react";
 
 import { defaultCallDefaults, type CallDefaults } from "@/lib/media/call-defaults";
+import { defaultNotificationPreferences, type NotificationPreferences } from "@/lib/notifications/preferences";
 
 export type AgentIdentity = {
   id: string;
@@ -10,6 +11,7 @@ export type AgentIdentity = {
   email: string;
   initials: string;
   callDefaults: CallDefaults;
+  notificationPreferences: NotificationPreferences;
 };
 
 const fallbackAgent: AgentIdentity = {
@@ -18,6 +20,7 @@ const fallbackAgent: AgentIdentity = {
   email: "agent@supportroom.dev",
   initials: "SA",
   callDefaults: defaultCallDefaults,
+  notificationPreferences: defaultNotificationPreferences,
 };
 
 const AgentIdentityContext = createContext(fallbackAgent);

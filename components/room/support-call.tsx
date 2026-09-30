@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useLocalMedia } from "@/hooks/use-local-media";
+import { useAgentNotifications } from "@/hooks/use-agent-notifications";
 import { useOutgoingMedia } from "@/hooks/use-outgoing-media";
 import { usePeerConnection } from "@/hooks/use-peer-connection";
 import { useScreenShare } from "@/hooks/use-screen-share";
@@ -17,6 +18,7 @@ import { useScreenWakeLock } from "@/hooks/use-screen-wake-lock";
 import { useSessionHistory } from "@/hooks/use-session-history";
 import { useSignaling } from "@/hooks/use-signaling";
 import { invitationUrl, readHostRoom } from "@/lib/signaling/client";
+import { assessConnectionHealth } from "@/lib/webrtc/connection-health";
 import { cn } from "@/lib/utils";
 import { CallControls } from "./call-controls";
 import { CallDeviceSettings } from "./call-device-settings";
@@ -65,6 +67,20 @@ export function SupportCall({ roomId }: { roomId: string }) {
     onPersistenceError: handleHistoryError,
   });
   const signalingReconnecting = signaling.status === "reconnecting";
+  const connectionHealth = assessConnectionHealth({
+    connected: peer.connectionState === "connected",
+    reconnecting: peer.recoveryState === "reconnecting" || signalingReconnecting,
+    recoveryAttempts: peer.recoveryAttempts,
+    diagnostics: peer.diagnostics,
+    localMedia: { audio: media.isMicrophoneEnabled, video: screenShare.isSharing || media.isCameraEnabled },
+    remoteMedia: { audio: peer.remoteMicrophoneEnabled, video: peer.remoteScreenSharing || peer.remoteCameraEnabled },
+  });
+  useAgentNotifications({
+    customerWaiting: waitingCustomer,
+    customerName: signaling.room?.customerName,
+    connectionHealth: connectionHealth.level,
+    preferences: agent.notificationPreferences,
+  });
   const error = media.error || outgoingMedia.error || screenShare.error || peer.error || (signalingReconnecting ? null : signaling.error);
   const reference = signaling.room?.reference || "Support session";
   const panelTitle = panel === "diagnostics" ? "Connection details" : panel === "people" ? "People" : "Call settings";

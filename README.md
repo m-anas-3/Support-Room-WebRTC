@@ -2,7 +2,7 @@
 
 SupportRoom is a browser application for private one-to-one video support calls. The frontend is built with Next.js, TypeScript, Tailwind CSS, and shadcn/ui. A Node.js `ws` service handles room creation, waiting-room admission, and WebRTC negotiation messages.
 
-The current implementation includes the frontend screens, Supabase agent authentication and session history with abandoned-room reconciliation, authenticated room creation, persisted agent profiles and call defaults, real camera and microphone previews, WebSocket room signaling, and one-to-one WebRTC audio/video after admission. Calls include microphone/camera controls, in-call device switching, supported-browser speaker routing, screen sharing for either participant, complete media-track cleanup, ICE and WebSocket recovery, signaling-issued short-lived TURN credentials, and live connection diagnostics from `getStats()`.
+The current implementation includes the frontend screens, Supabase agent authentication, password recovery, session history with abandoned-room reconciliation, authenticated room creation, persisted agent profiles, call defaults, and notification preferences, real camera and microphone previews, WebSocket room signaling, and one-to-one WebRTC audio/video after admission. Calls include microphone/camera controls, in-call device switching, supported-browser speaker routing, screen sharing for either participant, complete media-track cleanup, ICE and WebSocket recovery, signaling-issued short-lived TURN credentials, browser alerts, and live connection diagnostics from `getStats()`.
 
 ## Development
 
@@ -47,6 +47,7 @@ Prepare the agent's devices, then start the customer's preview and ask to join. 
 - `docs/authentication.md`: agent sign-in, session refresh, protected routes, and Supabase setup
 - `docs/session-history.md`: persistent call lifecycle, diagnostic summaries, RLS, and migrations
 - `docs/deployment-security.md`: browser media policies, response headers, and screen wake-lock lifecycle
+- `docs/release-checklist.md`: deployed smoke tests, physical-device coverage, and TURN verification
 
 ## Validation
 

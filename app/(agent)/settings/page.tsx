@@ -6,9 +6,9 @@ import { useAgentIdentity } from "@/components/auth/agent-identity";
 import { AppShell } from "@/components/layout/app-shell";
 import { AccountSecurity } from "@/components/settings/account-security";
 import { CallDefaultsForm } from "@/components/settings/call-defaults-form";
+import { NotificationPreferencesForm } from "@/components/settings/notification-preferences-form";
 import { ProfileSettingsForm } from "@/components/settings/profile-settings-form";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export default function SettingsPage() {
@@ -26,7 +26,7 @@ export default function SettingsPage() {
           </TabsList>
           <TabsContent value="profile"><SettingsCard title="Agent profile" description="Shown to customers during a support session."><ProfileSettingsForm agent={agent} /></SettingsCard></TabsContent>
           <TabsContent value="calls"><SettingsCard title="Call defaults" description="Applied when you prepare your devices in a new support room."><CallDefaultsForm agent={agent} /></SettingsCard></TabsContent>
-          <TabsContent value="notifications"><SettingsCard title="Notifications" description="Choose when SupportRoom gets your attention."><div className="space-y-5"><ToggleRow label="Customer enters waiting room" description="Play a sound and show a browser notification." defaultChecked /><ToggleRow label="Connection quality drops" description="Alert when packet loss or latency crosses a threshold." defaultChecked /><ToggleRow label="Session summary ready" description="Email a link to the completed diagnostic report." /><ToggleRow label="Weekly activity summary" description="Receive a summary every Monday morning." /></div></SettingsCard></TabsContent>
+          <TabsContent value="notifications"><SettingsCard title="Notifications" description="Choose when SupportRoom gets your attention."><NotificationPreferencesForm agent={agent} /></SettingsCard></TabsContent>
           <TabsContent value="security"><SettingsCard title="Account security" description="Update your password and revoke access from other devices."><AccountSecurity /></SettingsCard></TabsContent>
         </Tabs>
       </div>
@@ -35,4 +35,3 @@ export default function SettingsPage() {
 }
 
 function SettingsCard({ title, description, children }: { title: string; description: string; children: React.ReactNode }) { return <Card className="border shadow-sm ring-0"><CardHeader className="border-b"><CardTitle>{title}</CardTitle><CardDescription>{description}</CardDescription></CardHeader><CardContent>{children}</CardContent></Card>; }
-function ToggleRow({ label, description, defaultChecked = false }: { label: string; description: string; defaultChecked?: boolean }) { return <div className="flex items-start justify-between gap-6"><div><p className="text-sm font-medium">{label}</p><p className="mt-0.5 text-sm leading-5 text-muted-foreground">{description}</p></div><Switch defaultChecked={defaultChecked} aria-label={label} /></div>; }

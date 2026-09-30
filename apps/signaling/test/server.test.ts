@@ -330,3 +330,34 @@ test("issues short-lived TURN credentials only after a valid room join", async (
   assert.ok(configuration.expiresAt > Date.now() + 590_000);
   assert.equal(configuration.iceTransportPolicy, "all");
 });
+
+test("reports operational health without exposing room secrets", async () => {
+  const address = app.server.address() as AddressInfo;
+  const healthUrl = `http://127.0.0.1:${address.port}/health`;
+  const initialResponse = await fetch(healthUrl);
+  assert.equal(initialResponse.status, 200);
+  const initial = await initialResponse.json() as Record<string, unknown>;
+  assert.deepEqual({ status: initial.status, service: initial.service, activeRooms: initial.activeRooms, connections: initial.connections }, {
+    status: "ok",
+    service: "support-room-signaling",
+    activeRooms: 0,
+    connections: 0,
+  });
+  assert.equal(typeof initial.uptimeSeconds, "number");
+  assert.equal("hostToken" in initial, false);
+  assert.equal("inviteToken" in initial, false);
+
+  const creator = await connect();
+  await createRoom(creator);
+  const active = await (await fetch(healthUrl)).json() as Record<string, unknown>;
+  assert.equal(active.activeRooms, 1);
+  assert.equal(active.connections, 1);
+});
+
+test("uses the service-restart close code during graceful shutdown", async () => {
+  const client = await connect();
+  const closed = new Promise<number>((resolve) => client.socket.once("close", (code) => resolve(code)));
+  const closing = app.close();
+  assert.equal(await closed, 1012);
+  await closing;
+});

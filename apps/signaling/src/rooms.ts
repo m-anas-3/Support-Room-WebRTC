@@ -24,6 +24,12 @@ type IceConfigurationIssuer = (roomId: string, role: Membership["role"]) => IceC
 export type RoomClosureReason = "host-ended" | "host-disconnected" | "expired" | "server-shutdown";
 export type RoomClosure = { roomId: string; agentId: string; reason: RoomClosureReason; endedAt: string };
 type RoomClosureListener = (closure: RoomClosure) => void;
+export type RoomEvent =
+  | { event: "room_created"; roomId: string }
+  | { event: "room_joined"; roomId: string; role: Membership["role"] }
+  | { event: "customer_admitted" | "customer_declined"; roomId: string }
+  | { event: "room_closed"; roomId: string; reason: RoomClosureReason };
+type RoomEventListener = (event: RoomEvent) => void;
 
 function matchesToken(provided: string, expected: string) {
   const a = Buffer.from(provided);
@@ -41,7 +47,10 @@ export class RoomRegistry {
     private hostReconnectGraceMs = 30000,
     private issueIceConfiguration: IceConfigurationIssuer | null = null,
     private onRoomClosed: RoomClosureListener | null = null,
+    private onEvent: RoomEventListener | null = null,
   ) {}
+
+  get activeRoomCount() { return this.rooms.size; }
 
   create(requestId: string, reference: string, agentId: string): CreatedRoom | null {
     if (this.rooms.size >= this.maxRooms) return null;
@@ -55,6 +64,7 @@ export class RoomRegistry {
       hostDisconnectTimer: null,
     };
     this.rooms.set(room.id, room);
+    this.onEvent?.({ event: "room_created", roomId: room.id });
     return { type: "room-created", requestId, roomId: room.id, hostToken: room.hostToken, inviteToken: room.inviteToken, expiresAt: room.expiresAt };
   }
 
@@ -91,6 +101,7 @@ export class RoomRegistry {
       room.customerReady = false;
     }
     this.memberships.set(socket, { room, role: message.role });
+    this.onEvent?.({ event: "room_joined", roomId: room.id, role: message.role });
     if (this.issueIceConfiguration) send(socket, this.issueIceConfiguration(room.id, message.role));
     this.broadcast(room);
   }
@@ -106,12 +117,14 @@ export class RoomRegistry {
       if (!room.customer || room.admitted) return sendError(socket, "NO_WAITING_CUSTOMER", "There is no waiting customer.");
       if (message.type === "admit") {
         room.admitted = true;
+        this.onEvent?.({ event: "customer_admitted", roomId: room.id });
         send(room.customer, { type: "admitted" });
       } else {
         const customer = room.customer;
         this.memberships.delete(customer);
         room.customer = null;
         room.customerName = null;
+        this.onEvent?.({ event: "customer_declined", roomId: room.id });
         send(customer, { type: "declined" });
         customer.close(1000, "Declined");
       }
@@ -178,8 +191,9 @@ export class RoomRegistry {
       if (!socket) continue;
       this.memberships.delete(socket);
       send(socket, { type: "room-closed", reason: clientReason });
-      socket.close(1000, "Room closed");
+      socket.close(reason === "server-shutdown" ? 1012 : 1000, reason === "server-shutdown" ? "Service restarting" : "Room closed");
     }
+    this.onEvent?.({ event: "room_closed", roomId: room.id, reason });
     this.onRoomClosed?.({ roomId: room.id, agentId: room.agentId, reason, endedAt: new Date().toISOString() });
   }
 

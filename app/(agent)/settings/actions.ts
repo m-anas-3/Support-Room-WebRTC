@@ -12,6 +12,7 @@ export type ProfileSettingsState = {
 };
 
 export type CallDefaultsState = ProfileSettingsState;
+export type NotificationPreferencesState = ProfileSettingsState;
 export type AccountSecurityState = ProfileSettingsState & {
   reauthenticationRequired?: boolean;
 };
@@ -85,6 +86,38 @@ export async function updateCallDefaults(
 
   revalidatePath("/", "layout");
   return { status: "success", message: "Your call defaults have been updated." };
+}
+
+export async function updateNotificationPreferences(
+  _state: NotificationPreferencesState,
+  formData: FormData,
+): Promise<NotificationPreferencesState> {
+  if (!isSupabaseConfigured()) {
+    return { status: "error", message: "Supabase authentication is not configured." };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.auth.updateUser({
+    data: {
+      notification_preferences: {
+        customer_waiting: formData.get("customerWaiting") === "on",
+        connection_quality: formData.get("connectionQuality") === "on",
+      },
+    },
+  });
+
+  if (error || !data.user) {
+    const sessionExpired = error?.code === "session_not_found" || error?.status === 401;
+    return {
+      status: "error",
+      message: sessionExpired
+        ? "Your session has expired. Sign in again before updating notifications."
+        : "We could not update your notification preferences. Please try again.",
+    };
+  }
+
+  revalidatePath("/", "layout");
+  return { status: "success", message: "Your notification preferences have been updated." };
 }
 
 export async function updatePassword(

@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { redirect } from "next/navigation";
 import { AgentIdentityProvider, type AgentIdentity } from "@/components/auth/agent-identity";
 import { defaultCallDefaults, parseCallDefaults } from "@/lib/media/call-defaults";
+import { defaultNotificationPreferences, parseNotificationPreferences } from "@/lib/notifications/preferences";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
 
@@ -26,6 +27,7 @@ export default async function AgentLayout({ children }: { children: ReactNode })
     email,
     initials: initials(name),
     callDefaults: parseCallDefaults(metadata.call_defaults),
+    notificationPreferences: parseNotificationPreferences(metadata.notification_preferences),
   };
 
   return <AgentIdentityProvider value={identity}>{children}</AgentIdentityProvider>;
@@ -37,6 +39,7 @@ const developmentAgent: AgentIdentity = {
   email: "alex@supportroom.dev",
   initials: "AM",
   callDefaults: defaultCallDefaults,
+  notificationPreferences: defaultNotificationPreferences,
 };
 
 function firstString(...values: unknown[]) {
