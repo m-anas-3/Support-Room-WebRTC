@@ -28,7 +28,7 @@ export function SupportCall({ roomId }: { roomId: string }) {
   const router = useRouter();
   const agent = useAgentIdentity();
   const [panel, setPanel] = useState<Panel>(null);
-  const media = useLocalMedia();
+  const media = useLocalMedia(agent.callDefaults);
   const signaling = useSignaling({ roomId, role: "host", name: agent.name, onDisconnect: media.stopMedia });
   const admitted = signaling.room?.customerState === "admitted";
   const waitingCustomer = signaling.room?.customerState === "waiting";
@@ -101,7 +101,7 @@ export function SupportCall({ roomId }: { roomId: string }) {
             )}
 
             <div className="absolute right-3 bottom-3 z-10 aspect-video w-36 sm:right-4 sm:bottom-4 sm:w-48 lg:w-56 xl:w-64">
-              <VideoTile compact className="h-full min-h-0 rounded-xl border-white/15 bg-[#3c4043] shadow-2xl shadow-black/50" stream={media.stream} name="You" label={screenShare.isSharing ? "Host · Presenting" : "Host"} local cameraEnabled={media.isCameraEnabled} microphoneEnabled={media.isMicrophoneEnabled} testId="local-video" action={!mediaReady ? <Button size="xs" disabled={media.status === "requesting"} className="bg-white text-[#202124] hover:bg-slate-100" onClick={() => void media.startMedia()}><Camera />{media.status === "requesting" ? "Starting…" : "Start camera"}</Button> : undefined} />
+              <VideoTile compact className="h-full min-h-0 rounded-xl border-white/15 bg-[#3c4043] shadow-2xl shadow-black/50" stream={media.stream} name="You" label={screenShare.isSharing ? "Host · Presenting" : "Host"} local cameraEnabled={media.isCameraEnabled} microphoneEnabled={media.isMicrophoneEnabled} testId="local-video" action={!mediaReady ? <Button size="xs" disabled={media.status === "requesting"} className="bg-white text-[#202124] hover:bg-slate-100" onClick={() => void media.startMedia()}><Camera />{media.status === "requesting" ? "Starting…" : agent.callDefaults.cameraEnabled ? "Start camera" : "Prepare devices"}</Button> : undefined} />
             </div>
           </div>
         </section>

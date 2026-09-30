@@ -37,11 +37,19 @@ The automated browser tests set `SUPPORTROOM_E2E=1` on their isolated local web 
 
 ## Agent profile metadata
 
-The Settings page stores the agent's display name in the signed-in Supabase user's `user_metadata.full_name` field. The update runs through a Next.js Server Action, so the browser never receives credentials beyond the normal authenticated session cookies.
+The Settings page stores the agent's display name in `user_metadata.full_name` and personal call defaults in `user_metadata.call_defaults`. These updates run through Next.js Server Actions, so the browser never receives credentials beyond the normal authenticated session cookies.
 
 After an update, the agent layout is revalidated. The sidebar and any other component using `AgentIdentityProvider` then receive the new name and initials.
 
 The work email is read-only in the profile form because changing an authentication email has a separate verification flow. Profile photos and organization roles should be stored in a dedicated `profiles` table when those features are implemented.
+
+Call defaults are user-controlled preferences rather than authorization data, so Auth metadata is sufficient for the current camera, microphone, and video-quality values. Organization roles or permissions must not rely on user-editable metadata.
+
+## Password and session security
+
+The Security tab updates the signed-in agent's password with `auth.updateUser()`. When Supabase Secure password change is enabled and the session is not recent, the agent can request a reauthentication code and submit it as the password-update nonce.
+
+The normal account-menu sign-out uses local scope, so it ends only the current session. The Security tab can separately use `others` scope to revoke refresh tokens for other browsers and devices while leaving the current session active. Existing short-lived access tokens remain valid until they expire.
 
 ## Concepts to learn
 
@@ -59,6 +67,7 @@ The work email is read-only in the profile form because changing an authenticati
 - [Supabase: Creating an SSR client for Next.js](https://supabase.com/docs/guides/auth/server-side/creating-a-client?framework=nextjs)
 - [Supabase: Password-based authentication](https://supabase.com/docs/guides/auth/passwords)
 - [Supabase: Update a user](https://supabase.com/docs/reference/javascript/auth-updateuser)
+- [Supabase: Sign out and session scopes](https://supabase.com/docs/reference/javascript/auth-signout)
 - [Supabase: Row Level Security](https://supabase.com/docs/guides/database/postgres/row-level-security)
 - [Next.js: Authentication](https://nextjs.org/docs/app/guides/authentication)
 - [Next.js: Proxy](https://nextjs.org/docs/app/getting-started/proxy)

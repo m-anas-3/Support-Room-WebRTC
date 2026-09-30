@@ -2,7 +2,7 @@
 
 SupportRoom is a browser application for private one-to-one video support calls. The frontend is built with Next.js, TypeScript, Tailwind CSS, and shadcn/ui. A Node.js `ws` service handles room creation, waiting-room admission, and WebRTC negotiation messages.
 
-The current implementation includes the frontend screens, Supabase agent authentication and session history with abandoned-room reconciliation, authenticated room creation, real camera and microphone previews, WebSocket room signaling, and one-to-one WebRTC audio/video after admission. Calls include microphone/camera controls, in-call device switching, supported-browser speaker routing, screen sharing for either participant, complete media-track cleanup, ICE and WebSocket recovery, signaling-issued short-lived TURN credentials, and live connection diagnostics from `getStats()`.
+The current implementation includes the frontend screens, Supabase agent authentication and session history with abandoned-room reconciliation, authenticated room creation, persisted agent profiles and call defaults, real camera and microphone previews, WebSocket room signaling, and one-to-one WebRTC audio/video after admission. Calls include microphone/camera controls, in-call device switching, supported-browser speaker routing, screen sharing for either participant, complete media-track cleanup, ICE and WebSocket recovery, signaling-issued short-lived TURN credentials, and live connection diagnostics from `getStats()`.
 
 ## Development
 
@@ -34,7 +34,7 @@ pnpm dev
 
 Then open [http://localhost:3000](http://localhost:3000). Create a room from the dashboard and open its invitation link in another browser profile or a private window.
 
-Start the agent's camera, then start the customer's preview and ask to join. Admit the customer from the agent room to establish the media connection.
+Prepare the agent's devices, then start the customer's preview and ask to join. Admit the customer from the agent room to establish the media connection.
 
 ## Workspace
 

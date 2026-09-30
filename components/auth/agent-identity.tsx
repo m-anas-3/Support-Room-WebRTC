@@ -2,11 +2,14 @@
 
 import { createContext, useContext, type ReactNode } from "react";
 
+import { defaultCallDefaults, type CallDefaults } from "@/lib/media/call-defaults";
+
 export type AgentIdentity = {
   id: string;
   name: string;
   email: string;
   initials: string;
+  callDefaults: CallDefaults;
 };
 
 const fallbackAgent: AgentIdentity = {
@@ -14,6 +17,7 @@ const fallbackAgent: AgentIdentity = {
   name: "Support agent",
   email: "agent@supportroom.dev",
   initials: "SA",
+  callDefaults: defaultCallDefaults,
 };
 
 const AgentIdentityContext = createContext(fallbackAgent);

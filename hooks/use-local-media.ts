@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import type { CallDefaults, VideoQuality } from "@/lib/media/call-defaults";
+
 type MediaStatus = "idle" | "requesting" | "ready" | "error";
 type DeviceStatus = "idle" | "requesting" | "ready" | "off" | "recovering" | "unavailable";
 
@@ -54,11 +56,15 @@ function savePreference(key: string, value: string) {
   } catch { /* Device preferences are optional. */ }
 }
 
-function videoConstraints(deviceId?: string): MediaTrackConstraints {
+function videoConstraints(deviceId?: string, quality: VideoQuality = "720"): MediaTrackConstraints {
+  const resolution = quality === "1080"
+    ? { width: { ideal: 1920 }, height: { ideal: 1080 } }
+    : quality === "720"
+      ? { width: { ideal: 1280 }, height: { ideal: 720 } }
+      : {};
   return {
     deviceId: deviceId ? { exact: deviceId } : undefined,
-    width: { ideal: 1280 },
-    height: { ideal: 720 },
+    ...resolution,
     frameRate: { ideal: 30, max: 60 },
   };
 }
@@ -76,12 +82,12 @@ function shouldTryDefaultDevice(error: unknown) {
   return error instanceof DOMException && ["NotFoundError", "OverconstrainedError"].includes(error.name);
 }
 
-async function requestCamera(deviceId?: string) {
+async function requestCamera(deviceId?: string, quality?: VideoQuality) {
   try {
-    return await navigator.mediaDevices.getUserMedia({ video: videoConstraints(deviceId), audio: false });
+    return await navigator.mediaDevices.getUserMedia({ video: videoConstraints(deviceId, quality), audio: false });
   } catch (error) {
     if (!deviceId || !shouldTryDefaultDevice(error)) throw error;
-    return navigator.mediaDevices.getUserMedia({ video: videoConstraints(), audio: false });
+    return navigator.mediaDevices.getUserMedia({ video: videoConstraints(undefined, quality), audio: false });
   }
 }
 
@@ -94,9 +100,9 @@ async function requestMicrophone(deviceId?: string) {
   }
 }
 
-async function requestMedia(cameraEnabled: boolean, cameraId?: string, microphoneId?: string) {
+async function requestMedia(cameraEnabled: boolean, cameraId?: string, microphoneId?: string, quality?: VideoQuality) {
   const constraints: MediaStreamConstraints = {
-    video: cameraEnabled ? videoConstraints(cameraId) : false,
+    video: cameraEnabled ? videoConstraints(cameraId, quality) : false,
     audio: audioConstraints(microphoneId),
   };
 
@@ -107,13 +113,15 @@ async function requestMedia(cameraEnabled: boolean, cameraId?: string, microphon
     if (!hasRememberedDevice || !shouldTryDefaultDevice(error)) throw error;
 
     return navigator.mediaDevices.getUserMedia({
-      video: cameraEnabled ? videoConstraints() : false,
+      video: cameraEnabled ? videoConstraints(undefined, quality) : false,
       audio: audioConstraints(),
     });
   }
 }
 
-export function useLocalMedia() {
+export function useLocalMedia(options: Partial<CallDefaults> = {}) {
+  const initialCameraEnabled = options.cameraEnabled ?? true;
+  const initialMicrophoneEnabled = options.microphoneEnabled ?? true;
   const streamRef = useRef<MediaStream | null>(null);
   const videoTrackRef = useRef<MediaStreamTrack | null>(null);
   const audioTrackRef = useRef<MediaStreamTrack | null>(null);
@@ -125,8 +133,9 @@ export function useLocalMedia() {
   const selectedCameraIdRef = useRef("");
   const selectedMicrophoneIdRef = useRef("");
   const selectedSpeakerIdRef = useRef("");
-  const cameraWantedRef = useRef(true);
-  const microphoneWantedRef = useRef(true);
+  const cameraWantedRef = useRef(initialCameraEnabled);
+  const microphoneWantedRef = useRef(initialMicrophoneEnabled);
+  const videoQualityRef = useRef(options.videoQuality ?? "720");
   const mountedRef = useRef(true);
 
   const [stream, setStream] = useState<MediaStream | null>(null);
@@ -141,8 +150,8 @@ export function useLocalMedia() {
   const [selectedMicrophoneId, setSelectedMicrophoneId] = useState("");
   const [selectedSpeakerId, setSelectedSpeakerId] = useState("");
   const [speakerError, setSpeakerError] = useState<string | null>(null);
-  const [isCameraEnabled, setIsCameraEnabled] = useState(true);
-  const [isMicrophoneEnabled, setIsMicrophoneEnabled] = useState(true);
+  const [isCameraEnabled, setIsCameraEnabled] = useState(initialCameraEnabled);
+  const [isMicrophoneEnabled, setIsMicrophoneEnabled] = useState(initialMicrophoneEnabled);
   const [audioLevel, setAudioLevel] = useState(0);
   const speakerSelectionSupported = typeof HTMLMediaElement !== "undefined" && "setSinkId" in HTMLMediaElement.prototype;
   const speakerPromptSupported = typeof navigator !== "undefined"
@@ -207,7 +216,7 @@ export function useLocalMedia() {
     if (!recovering) setError(null);
     let requestedStream: MediaStream | null = null;
     try {
-      requestedStream = await requestCamera(deviceId);
+      requestedStream = await requestCamera(deviceId, videoQualityRef.current);
       const nextTrack = requestedStream.getVideoTracks()[0];
       if (!nextTrack) throw new Error("The selected camera did not provide a video track.");
       if (!mountedRef.current || requestId !== videoRequestIdRef.current || !cameraWantedRef.current) {
@@ -309,6 +318,7 @@ export function useLocalMedia() {
         cameraWantedRef.current,
         cameraId,
         microphoneId,
+        videoQualityRef.current,
       );
       if (!mountedRef.current || requestId !== requestIdRef.current) {
         stopTracks(nextStream);

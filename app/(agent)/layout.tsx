@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { redirect } from "next/navigation";
 import { AgentIdentityProvider, type AgentIdentity } from "@/components/auth/agent-identity";
+import { defaultCallDefaults, parseCallDefaults } from "@/lib/media/call-defaults";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
 
@@ -19,7 +20,13 @@ export default async function AgentLayout({ children }: { children: ReactNode })
     : {};
   const email = typeof claims.email === "string" ? claims.email : "Signed-in agent";
   const name = firstString(metadata.full_name, metadata.name) ?? email.split("@")[0] ?? "Support agent";
-  const identity: AgentIdentity = { id: String(claims.sub), name, email, initials: initials(name) };
+  const identity: AgentIdentity = {
+    id: String(claims.sub),
+    name,
+    email,
+    initials: initials(name),
+    callDefaults: parseCallDefaults(metadata.call_defaults),
+  };
 
   return <AgentIdentityProvider value={identity}>{children}</AgentIdentityProvider>;
 }
@@ -29,6 +36,7 @@ const developmentAgent: AgentIdentity = {
   name: "Alex Morgan",
   email: "alex@supportroom.dev",
   initials: "AM",
+  callDefaults: defaultCallDefaults,
 };
 
 function firstString(...values: unknown[]) {

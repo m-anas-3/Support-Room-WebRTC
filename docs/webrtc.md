@@ -75,6 +75,8 @@ SDP operations and incoming ICE messages are processed sequentially. Local candi
 
 ## Concepts to learn
 
+- **Ideal media constraints** ask the browser for a preferred capture size while allowing it to select a compatible fallback. SupportRoom maps the agent's Automatic, 720p, and 1080p defaults to these constraints; the selected camera may still return another resolution.
+
 **Stream and track:** a stream groups media tracks. Camera and microphone tracks are separate; `addTrack()` attaches them to the connection for transmission.
 
 **Signaling and media:** WebSockets exchange instructions. `RTCPeerConnection` carries media over the selected network path. SDP describes the session, including media capabilities and transport information; it does not contain video frames.
@@ -105,6 +107,7 @@ The tests use a separate `.next-e2e` directory and local test ports. Headless Ch
 - [MDN: MediaStreamTrack.enabled](https://developer.mozilla.org/en-US/docs/Web/API/MediaStreamTrack/enabled)
 - [MDN: MediaStreamTrack.stop](https://developer.mozilla.org/en-US/docs/Web/API/MediaStreamTrack/stop)
 - [MDN: MediaDevices devicechange](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/devicechange_event)
+- [MDN: Media capabilities, constraints, and settings](https://developer.mozilla.org/en-US/docs/Web/API/Media_Capture_and_Streams_API/Constraints)
 - [W3C: Audio Output Devices API](https://www.w3.org/TR/audio-output/)
 - [MDN: HTMLMediaElement.setSinkId](https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/setSinkId)
 - [MDN: closing a peer connection](https://developer.mozilla.org/en-US/docs/Web/API/RTCPeerConnection/close)

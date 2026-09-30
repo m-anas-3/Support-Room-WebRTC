@@ -4,12 +4,10 @@ import { Bell, KeyRound, ShieldCheck, UserRound } from "lucide-react";
 
 import { useAgentIdentity } from "@/components/auth/agent-identity";
 import { AppShell } from "@/components/layout/app-shell";
+import { AccountSecurity } from "@/components/settings/account-security";
+import { CallDefaultsForm } from "@/components/settings/call-defaults-form";
 import { ProfileSettingsForm } from "@/components/settings/profile-settings-form";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -27,9 +25,9 @@ export default function SettingsPage() {
             <TabsTrigger value="security" className="justify-start md:flex-none"><KeyRound />Security</TabsTrigger>
           </TabsList>
           <TabsContent value="profile"><SettingsCard title="Agent profile" description="Shown to customers during a support session."><ProfileSettingsForm agent={agent} /></SettingsCard></TabsContent>
-          <TabsContent value="calls"><SettingsCard title="Call defaults" description="Applied when you create a new support room."><div className="space-y-5"><ToggleRow label="Start with camera on" description="Enable your camera when entering a room." defaultChecked /><ToggleRow label="Start with microphone on" description="Enable your microphone when entering a room." defaultChecked /><Separator /><Field><FieldLabel>Video quality</FieldLabel><Select defaultValue="720"><SelectTrigger className="w-full sm:w-56"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="720">HD · 720p</SelectItem><SelectItem value="1080">Full HD · 1080p</SelectItem><SelectItem value="auto">Automatic</SelectItem></SelectContent></Select><FieldDescription>Automatic may reduce quality on slower networks.</FieldDescription></Field></div></SettingsCard></TabsContent>
+          <TabsContent value="calls"><SettingsCard title="Call defaults" description="Applied when you prepare your devices in a new support room."><CallDefaultsForm agent={agent} /></SettingsCard></TabsContent>
           <TabsContent value="notifications"><SettingsCard title="Notifications" description="Choose when SupportRoom gets your attention."><div className="space-y-5"><ToggleRow label="Customer enters waiting room" description="Play a sound and show a browser notification." defaultChecked /><ToggleRow label="Connection quality drops" description="Alert when packet loss or latency crosses a threshold." defaultChecked /><ToggleRow label="Session summary ready" description="Email a link to the completed diagnostic report." /><ToggleRow label="Weekly activity summary" description="Receive a summary every Monday morning." /></div></SettingsCard></TabsContent>
-          <TabsContent value="security"><SettingsCard title="Security" description="Protect your account and support sessions."><div className="space-y-5"><div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center"><div><p className="text-sm font-medium">Password</p><p className="text-sm text-muted-foreground">Last changed 42 days ago</p></div><Button variant="outline">Change password</Button></div><Separator /><ToggleRow label="Two-factor authentication" description="Require a code when signing in from a new device." defaultChecked /><Separator /><div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center"><div><p className="text-sm font-medium">Active sessions</p><p className="text-sm text-muted-foreground">You are signed in on 2 devices.</p></div><Button variant="outline">Manage sessions</Button></div></div></SettingsCard></TabsContent>
+          <TabsContent value="security"><SettingsCard title="Account security" description="Update your password and revoke access from other devices."><AccountSecurity /></SettingsCard></TabsContent>
         </Tabs>
       </div>
     </AppShell>
