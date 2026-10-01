@@ -1,13 +1,27 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { Camera, Check, Loader2, Mic, ShieldCheck, Video, VideoOff } from "lucide-react";
+import { useState } from "react";
+import {
+  Check,
+  Clock3,
+  Mic,
+  ShieldCheck,
+  Video,
+  ArrowRight,
+  CircleAlert,
+} from "lucide-react";
 
 import { Brand } from "@/components/layout/brand";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { DevicePreview } from "@/components/playground/device-preview";
+import { StatusNotice } from "@/components/layout/status-notice";
+import {
+  Accordion,
+  AccordionItem,
+  AccordionTrigger,
+  AccordionContent,
+} from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -23,20 +37,38 @@ import { CallDeviceSettings } from "@/components/room/call-device-settings";
 
 export function CustomerJoin({ roomId }: { roomId: string }) {
   const media = useLocalMedia();
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const [left, setLeft] = useState(false);
   const [waiting, setWaiting] = useState(false);
   const [name, setName] = useState("");
-  const signaling = useSignaling({ roomId, role: "customer", name, enabled: waiting, onDisconnect: media.stopMedia });
+  const signaling = useSignaling({
+    roomId,
+    role: "customer",
+    name,
+    enabled: waiting,
+    onDisconnect: media.stopMedia,
+  });
   const admitted = signaling.room?.customerState === "admitted";
   const isReady = media.status === "ready";
-  const failed = ["error", "closed", "disconnected", "declined"].includes(signaling.status);
+  const failed = ["error", "closed", "disconnected", "declined"].includes(
+    signaling.status,
+  );
   useScreenWakeLock(Boolean(admitted && !failed && media.stream));
-  const peer = usePeerConnection({ role: "customer", localStream: media.stream, enabled: admitted && signaling.status === "connected", iceConfiguration: signaling.iceConfiguration, send: signaling.send, subscribeToSignals: signaling.subscribeToSignals });
+  const peer = usePeerConnection({
+    role: "customer",
+    localStream: media.stream,
+    enabled: admitted && signaling.status === "connected",
+    iceConfiguration: signaling.iceConfiguration,
+    send: signaling.send,
+    subscribeToSignals: signaling.subscribeToSignals,
+  });
   const screenShare = useScreenShare({
     cameraStream: media.stream,
     enabled: peer.connectionState === "connected",
     replaceOutgoingVideoTrack: peer.replaceOutgoingVideoTrack,
-    announce: (active) => { if (signaling.status === "connected") signaling.send({ type: "screen-share-state", active }); },
+    announce: (active) => {
+      if (signaling.status === "connected")
+        signaling.send({ type: "screen-share-state", active });
+    },
   });
   const outgoingMedia = useOutgoingMedia({
     connected: peer.connectionState === "connected",
@@ -50,51 +82,321 @@ export function CustomerJoin({ roomId }: { roomId: string }) {
     send: signaling.send,
   });
 
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
-    video.srcObject = media.stream;
-    if (media.stream) void video.play().catch(() => undefined);
-    return () => { video.srcObject = null; };
-  }, [media.stream]);
-
   if (admitted && !failed && media.stream) {
-    return <CustomerCall name={name} hostName={signaling.room?.hostName ?? "Support agent"} localStream={media.stream} remoteStream={peer.remoteStream} connectionState={peer.connectionState} recoveryState={peer.recoveryState} connectionNotice={signaling.status === "reconnecting" ? `Signaling connection interrupted. Reconnecting${signaling.reconnectAttempt ? ` · attempt ${signaling.reconnectAttempt}` : ""}… Your devices remain ready.` : null} error={media.error || outgoingMedia.error || screenShare.error || peer.error || (signaling.status === "reconnecting" ? null : signaling.error)} cameraEnabled={media.isCameraEnabled} microphoneEnabled={media.isMicrophoneEnabled} cameraChanging={["requesting", "recovering"].includes(media.cameraStatus)} microphoneChanging={["requesting", "recovering"].includes(media.microphoneStatus)} screenSharing={screenShare.isSharing} remoteScreenSharing={peer.remoteScreenSharing} remoteCameraEnabled={peer.remoteCameraEnabled} remoteMicrophoneEnabled={peer.remoteMicrophoneEnabled} screenShareSupported={screenShare.supported} screenShareChanging={screenShare.isChanging} speakerId={media.selectedSpeakerId} deviceSettings={<CallDeviceSettings media={media} />} onSpeakerError={media.reportSpeakerError} onToggleCamera={media.toggleCamera} onToggleMicrophone={media.toggleMicrophone} onToggleScreenShare={() => { if (screenShare.isSharing) void screenShare.stopScreenShare(); else void screenShare.startScreenShare(); }} onLeave={() => { screenShare.releaseScreenShare(); peer.close(); media.stopMedia(); signaling.leave(); setWaiting(false); }} />;
+    return (
+      <CustomerCall
+        name={name}
+        hostName={signaling.room?.hostName ?? "Support agent"}
+        localStream={media.stream}
+        remoteStream={peer.remoteStream}
+        connectionState={peer.connectionState}
+        recoveryState={peer.recoveryState}
+        connectionNotice={
+          signaling.status === "reconnecting"
+            ? `Signaling connection interrupted. Reconnecting${signaling.reconnectAttempt ? ` · attempt ${signaling.reconnectAttempt}` : ""}… Your devices remain ready.`
+            : null
+        }
+        error={
+          media.error ||
+          outgoingMedia.error ||
+          screenShare.error ||
+          peer.error ||
+          (signaling.status === "reconnecting" ? null : signaling.error)
+        }
+        cameraEnabled={media.isCameraEnabled}
+        microphoneEnabled={media.isMicrophoneEnabled}
+        cameraChanging={["requesting", "recovering"].includes(
+          media.cameraStatus,
+        )}
+        microphoneChanging={["requesting", "recovering"].includes(
+          media.microphoneStatus,
+        )}
+        screenSharing={screenShare.isSharing}
+        remoteScreenSharing={peer.remoteScreenSharing}
+        remoteCameraEnabled={peer.remoteCameraEnabled}
+        remoteMicrophoneEnabled={peer.remoteMicrophoneEnabled}
+        screenShareSupported={screenShare.supported}
+        screenShareChanging={screenShare.isChanging}
+        speakerId={media.selectedSpeakerId}
+        deviceSettings={<CallDeviceSettings media={media} inCall />}
+        onSpeakerError={media.reportSpeakerError}
+        onToggleCamera={media.toggleCamera}
+        onToggleMicrophone={media.toggleMicrophone}
+        onToggleScreenShare={() => {
+          if (screenShare.isSharing) void screenShare.stopScreenShare();
+          else void screenShare.startScreenShare();
+        }}
+        onLeave={() => {
+          screenShare.releaseScreenShare();
+          peer.close();
+          media.stopMedia();
+          signaling.leave();
+          setWaiting(false);
+          setLeft(true);
+        }}
+      />
+    );
   }
 
-  return (
-    <main className="app-surface min-h-screen bg-[#f7f8fa]">
-      <header className="flex h-16 items-center justify-between border-b bg-white px-5 sm:px-8"><Brand href="/" /><Badge variant="outline" className="gap-1.5 bg-white font-normal"><ShieldCheck className="size-3.5 text-emerald-600" />Private room</Badge></header>
-      <div className="mx-auto grid w-full max-w-6xl gap-6 px-5 py-8 lg:grid-cols-[1.2fr_.8fr] lg:py-14">
-        <section>
-          <div className="mb-6"><p className="font-medium text-primary">Device preview</p><h1 className="mt-1.5 text-[1.75rem] font-semibold leading-tight">Get ready to join</h1><p className="mt-2 text-muted-foreground">Check how you look and sound before entering the room.</p></div>
-          <div className="relative aspect-video overflow-hidden rounded-xl bg-[#202b3d] shadow-sm">
-            <video ref={videoRef} autoPlay muted playsInline className={`h-full w-full object-cover [transform:scaleX(-1)] ${!isReady || !media.isCameraEnabled ? "invisible" : ""}`} />
-            {(!isReady || !media.isCameraEnabled) && <div className="absolute inset-0 grid place-items-center p-5 text-slate-300"><div className="text-center">{media.status === "requesting" ? <Loader2 className="mx-auto size-8 animate-spin" /> : <VideoOff className="mx-auto size-8" />}<p className="mt-3 text-sm">{media.status === "requesting" ? "Allow access in your browser" : isReady ? "Camera is off" : "Preview your camera and microphone"}</p>{!isReady && media.status !== "requesting" && <Button className="mt-4" onClick={() => void media.startMedia()}><Camera />Start preview</Button>}</div></div>}
-            {isReady && <div className="absolute bottom-3 left-3 flex items-center gap-2 rounded-md bg-black/45 px-2.5 py-1.5 text-xs text-white backdrop-blur"><span className="size-1.5 rounded-full bg-emerald-400" />Only visible to you</div>}
-          </div>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            <DeviceToggle icon={Camera} label="Camera" detail={media.stream?.getVideoTracks()[0]?.label || "Start preview to check"} checked={media.isCameraEnabled} disabled={!isReady} onCheckedChange={media.toggleCamera} />
-            <DeviceToggle icon={Mic} label="Microphone" detail={media.stream?.getAudioTracks()[0]?.label || "Start preview to check"} checked={media.isMicrophoneEnabled} disabled={!isReady} onCheckedChange={media.toggleMicrophone} />
-          </div>
-          {isReady && <Card className="mt-4 border shadow-sm ring-0"><CardHeader><CardTitle>Call devices</CardTitle><CardDescription>Choose the camera, microphone, and speaker for this call.</CardDescription></CardHeader><CardContent><CallDeviceSettings media={media} /></CardContent></Card>}
-          {isReady && <div className="mt-4 space-y-2"><p className="text-xs text-muted-foreground">{media.isMicrophoneEnabled ? "Speak to test your microphone" : "Microphone muted"}</p><Progress value={media.isMicrophoneEnabled ? media.audioLevel : 0} className="h-1.5" /><Button variant="ghost" size="sm" onClick={media.stopMedia}>Stop preview</Button></div>}
-          {media.error && <p role="alert" className="mt-3 text-sm text-destructive">{media.error}</p>}
-        </section>
+  function resetPreview() {
+    screenShare.releaseScreenShare();
+    peer.close();
+    signaling.leave();
+    media.stopMedia();
+    setWaiting(false);
+    setLeft(false);
+  }
 
-        <aside className="lg:pt-[88px]">
-          <Card className="border shadow-sm ring-0">
-            <CardHeader><CardTitle>{failed ? "Unable to join this room" : admitted ? "You’ve been admitted" : waiting ? "You’re in the waiting room" : "Join support session"}</CardTitle><CardDescription>{failed ? "Review the message below." : admitted ? "The agent accepted your request." : waiting ? signaling.room?.hostConnected ? "The support agent has been notified." : "Waiting for the support agent to connect." : `Room ${roomId}`}</CardDescription></CardHeader>
-            <CardContent>
-              {waiting ? <div className="py-5 text-center"><span className="mx-auto grid size-12 place-items-center rounded-full bg-muted text-muted-foreground"><Check className="size-6" /></span><p className="mt-4 font-medium">{failed ? "Request ended" : admitted ? `${signaling.room?.hostName ?? "The agent"} admitted you` : signaling.status === "connecting" ? "Connecting…" : "Waiting for admission"}</p><p className="mt-1 text-sm leading-6 text-muted-foreground">{signaling.error ?? (signaling.status === "declined" ? "The agent declined your request." : "Keep this page open until the agent responds.")}</p><Button variant="outline" className="mt-5" onClick={() => { screenShare.releaseScreenShare(); peer.close(); signaling.leave(); media.stopMedia(); setWaiting(false); }}>Leave room</Button></div> : <div className="space-y-5"><Field><FieldLabel htmlFor="name">Your name</FieldLabel><Input id="name" maxLength={80} placeholder="Enter your name" value={name} onChange={(event) => setName(event.target.value)} /></Field><Alert className="bg-blue-50/60 text-blue-950"><Video /><AlertTitle>About this preview</AlertTitle><AlertDescription>Preview media stays on this device. It is sent to the agent only after admission.</AlertDescription></Alert><Button className="h-10 w-full" disabled={!name.trim() || !isReady} onClick={() => setWaiting(true)}><Video />Ask to join</Button>{!isReady && <p className="text-center text-xs text-muted-foreground">Start the device preview before asking to join.</p>}</div>}
-            </CardContent>
-          </Card>
-        </aside>
-      </div>
+  const terminal = left || (waiting && failed);
+  return (
+    <main className="min-h-dvh bg-background">
+      <header className="flex h-16 items-center justify-between border-b bg-white px-5 sm:px-8">
+        <Brand href="/login" />
+        <span className="flex items-center gap-2 text-xs text-muted-foreground">
+          <ShieldCheck className="size-4" />
+          Private support call
+        </span>
+      </header>
+      {terminal ? (
+        <section className="mx-auto max-w-md px-6 py-20 text-center">
+          <span className="mx-auto grid size-14 place-items-center rounded-2xl border bg-white">
+            {left || signaling.status === "closed" ? (
+              <Check className="size-6" />
+            ) : (
+              <CircleAlert className="size-6" />
+            )}
+          </span>
+          <h1 className="mt-6 text-[28px] font-semibold tracking-tight">
+            {left || signaling.status === "closed"
+              ? "Your call has ended"
+              : signaling.status === "declined"
+                ? "Your request was declined"
+                : "Unable to join this room"}
+          </h1>
+          <p className="mt-3 text-sm leading-6 text-muted-foreground">
+            {left
+              ? "Your camera and microphone have been released. You can safely close this tab."
+              : signaling.error ||
+                (signaling.status === "declined"
+                  ? "Contact your support agent if you still need help."
+                  : "Ask your support agent for a new invitation if you need to reconnect.")}
+          </p>
+          <Button
+            variant="outline"
+            className="mt-7 h-11 bg-white"
+            onClick={resetPreview}
+          >
+            Back to device check
+          </Button>
+        </section>
+      ) : (
+        <div className="mx-auto max-w-[1100px] px-5 py-8 sm:px-8 lg:py-12">
+          <div
+            className="mb-8 flex items-center gap-3 text-xs text-muted-foreground"
+            aria-label="Joining progress"
+          >
+            <span
+              className={
+                isReady ? "text-primary" : "font-medium text-foreground"
+              }
+            >
+              01 · Check devices
+            </span>
+            <span className="h-px w-6 bg-border" />
+            <span
+              className={
+                !waiting && isReady ? "font-medium text-foreground" : ""
+              }
+            >
+              02 · Request to join
+            </span>
+            <span className="h-px w-6 bg-border" />
+            <span className={waiting ? "font-medium text-primary" : ""}>
+              03 · Join call
+            </span>
+          </div>
+          <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] lg:gap-12">
+            <section className="min-w-0">
+              <div className="mb-6">
+                <h1 className="text-[28px] font-semibold tracking-tight">
+                  Get ready to join
+                </h1>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  A quick check, then you’re ready to connect.
+                </p>
+              </div>
+              <DevicePreview media={media} />
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <DeviceToggle
+                  icon={Video}
+                  label="Camera"
+                  detail={media.isCameraEnabled ? "Camera on" : "Camera off"}
+                  checked={media.isCameraEnabled}
+                  disabled={
+                    !isReady ||
+                    ["requesting", "recovering"].includes(media.cameraStatus)
+                  }
+                  onCheckedChange={media.toggleCamera}
+                />
+                <DeviceToggle
+                  icon={Mic}
+                  label="Microphone"
+                  detail={media.isMicrophoneEnabled ? "Microphone on" : "Muted"}
+                  checked={media.isMicrophoneEnabled}
+                  disabled={
+                    !isReady ||
+                    ["requesting", "recovering"].includes(
+                      media.microphoneStatus,
+                    )
+                  }
+                  onCheckedChange={media.toggleMicrophone}
+                />
+              </div>
+              {isReady && (
+                <>
+                  <div className="mt-5 flex items-center gap-4">
+                    <span className="shrink-0 text-xs text-muted-foreground">
+                      {media.isMicrophoneEnabled
+                        ? "Speak to test"
+                        : "Microphone muted"}
+                    </span>
+                    <Progress
+                      aria-label="Microphone level"
+                      value={media.isMicrophoneEnabled ? media.audioLevel : 0}
+                      className="h-1.5"
+                    />
+                  </div>
+                  <Accordion className="mt-5 rounded-xl border bg-white px-5">
+                    <AccordionItem value="devices">
+                      <AccordionTrigger className="py-4">
+                        Device settings
+                      </AccordionTrigger>
+                      <AccordionContent className="pb-5">
+                        <CallDeviceSettings media={media} />
+                        <Button
+                          variant="ghost"
+                          className="mt-4"
+                          onClick={media.stopMedia}
+                        >
+                          Stop preview
+                        </Button>
+                      </AccordionContent>
+                    </AccordionItem>
+                  </Accordion>
+                </>
+              )}
+              {media.error && (
+                <StatusNotice className="mt-4" error>
+                  {media.error}
+                </StatusNotice>
+              )}
+            </section>
+            <aside className="rounded-2xl border bg-white p-6 lg:mt-[88px] lg:p-7">
+              {waiting ? (
+                <div className="py-3 text-center">
+                  <span className="mx-auto grid size-12 place-items-center rounded-2xl bg-primary/8 text-primary">
+                    <Clock3 className="size-6" />
+                  </span>
+                  <h2 className="mt-5 text-xl font-medium">
+                    {admitted
+                      ? "You’re in. Connecting…"
+                      : signaling.status === "connecting"
+                        ? "Sending your request…"
+                        : "Waiting for admission"}
+                  </h2>
+                  <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                    {signaling.error ||
+                      "Your agent will let you in shortly. Keep this page open; your preview is still private."}
+                  </p>
+                  <Button
+                    className="mt-6 h-11 w-full"
+                    variant="outline"
+                    onClick={() => {
+                      resetPreview();
+                      setLeft(true);
+                    }}
+                  >
+                    Leave room
+                  </Button>
+                </div>
+              ) : (
+                <>
+                  <Badge variant="secondary" className="mb-5">
+                    Guest access · No account needed
+                  </Badge>
+                  <h2 className="text-xl font-medium tracking-tight">
+                    Let’s get you connected.
+                  </h2>
+                  <p className="mt-2 mb-6 text-sm leading-6 text-muted-foreground">
+                    Let your support agent know who’s joining.
+                  </p>
+                  <Field>
+                    <FieldLabel htmlFor="name">Your name</FieldLabel>
+                    <Input
+                      className="h-11"
+                      id="name"
+                      autoComplete="name"
+                      maxLength={80}
+                      placeholder="Enter your name"
+                      value={name}
+                      onChange={(event) => setName(event.target.value)}
+                    />
+                  </Field>
+                  <Button
+                    className="mt-5 h-11 w-full"
+                    disabled={!name.trim() || !isReady}
+                    onClick={() => setWaiting(true)}
+                  >
+                    Ask to join <ArrowRight />
+                  </Button>
+                  {!isReady && (
+                    <p className="mt-3 text-center text-xs text-muted-foreground">
+                      Start the device preview before asking to join.
+                    </p>
+                  )}
+                  <p className="mt-6 border-t pt-5 text-xs leading-5 text-muted-foreground">
+                    Your preview stays on this device. Audio and video are
+                    shared only after your agent admits you. Your camera can
+                    stay off.
+                  </p>
+                </>
+              )}
+            </aside>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
 
-function DeviceToggle({ icon: Icon, label, detail, checked, disabled, onCheckedChange }: { icon: typeof Camera; label: string; detail: string; checked: boolean; disabled: boolean; onCheckedChange: (checked: boolean) => void }) {
-  return <div className="flex items-center gap-3 rounded-lg border bg-white p-3 shadow-xs"><span className="grid size-8 place-items-center rounded-md bg-muted text-muted-foreground"><Icon className="size-4" /></span><div className="min-w-0 flex-1"><p className="text-sm font-medium">{label}</p><p className="truncate text-xs text-muted-foreground">{detail}</p></div><Switch checked={checked} disabled={disabled} onCheckedChange={onCheckedChange} aria-label={`Toggle ${label}`} /></div>;
+function DeviceToggle({
+  icon: Icon,
+  label,
+  detail,
+  checked,
+  disabled,
+  onCheckedChange,
+}: {
+  icon: typeof Video;
+  label: string;
+  detail: string;
+  checked: boolean;
+  disabled: boolean;
+  onCheckedChange: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-3 rounded-xl border bg-white p-4">
+      <Icon className="size-4 text-muted-foreground" />
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium">{label}</p>
+        <p className="text-xs text-muted-foreground">{detail}</p>
+      </div>
+      <Switch
+        checked={checked}
+        disabled={disabled}
+        onCheckedChange={onCheckedChange}
+        aria-label={`Toggle ${label}`}
+      />
+    </div>
+  );
 }

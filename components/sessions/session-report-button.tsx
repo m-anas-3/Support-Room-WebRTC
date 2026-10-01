@@ -3,9 +3,19 @@
 import { Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { shortSessionId } from "@/lib/sessions/presentation";
-import { sessionDurationSeconds, type SupportSession, type SupportSessionDiagnosticSample } from "@/lib/sessions/types";
+import {
+  sessionDurationSeconds,
+  type SupportSession,
+  type SupportSessionDiagnosticSample,
+} from "@/lib/sessions/types";
 
-export function SessionReportButton({ session, samples }: { session: SupportSession; samples: SupportSessionDiagnosticSample[] }) {
+export function SessionReportButton({
+  session,
+  samples,
+}: {
+  session: SupportSession;
+  samples: SupportSessionDiagnosticSample[];
+}) {
   function download() {
     const report = {
       session: shortSessionId(session.id),
@@ -33,7 +43,9 @@ export function SessionReportButton({ session, samples }: { session: SupportSess
       },
       timeline: samples,
     };
-    const url = URL.createObjectURL(new Blob([JSON.stringify(report, null, 2)], { type: "application/json" }));
+    const url = URL.createObjectURL(
+      new Blob([JSON.stringify(report, null, 2)], { type: "application/json" }),
+    );
     const anchor = document.createElement("a");
     anchor.href = url;
     anchor.download = `${shortSessionId(session.id).toLowerCase()}-report.json`;
@@ -41,5 +53,10 @@ export function SessionReportButton({ session, samples }: { session: SupportSess
     URL.revokeObjectURL(url);
   }
 
-  return <Button variant="outline" onClick={download}><Download />Download report</Button>;
+  return (
+    <Button variant="outline" onClick={download}>
+      <Download />
+      Download report
+    </Button>
+  );
 }

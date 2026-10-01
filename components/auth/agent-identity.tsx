@@ -2,8 +2,14 @@
 
 import { createContext, useContext, type ReactNode } from "react";
 
-import { defaultCallDefaults, type CallDefaults } from "@/lib/media/call-defaults";
-import { defaultNotificationPreferences, type NotificationPreferences } from "@/lib/notifications/preferences";
+import {
+  defaultCallDefaults,
+  type CallDefaults,
+} from "@/lib/media/call-defaults";
+import {
+  defaultNotificationPreferences,
+  type NotificationPreferences,
+} from "@/lib/notifications/preferences";
 
 export type AgentIdentity = {
   id: string;
@@ -25,8 +31,18 @@ const fallbackAgent: AgentIdentity = {
 
 const AgentIdentityContext = createContext(fallbackAgent);
 
-export function AgentIdentityProvider({ value, children }: { value: AgentIdentity; children: ReactNode }) {
-  return <AgentIdentityContext.Provider value={value}>{children}</AgentIdentityContext.Provider>;
+export function AgentIdentityProvider({
+  value,
+  children,
+}: {
+  value: AgentIdentity;
+  children: ReactNode;
+}) {
+  return (
+    <AgentIdentityContext.Provider value={value}>
+      {children}
+    </AgentIdentityContext.Provider>
+  );
 }
 
 export function useAgentIdentity() {
