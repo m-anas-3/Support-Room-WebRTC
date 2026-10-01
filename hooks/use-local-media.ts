@@ -381,7 +381,7 @@ export function useLocalMedia(options: Partial<CallDefaults> = {}) {
 
   const toggleCamera = useCallback(() => {
     const current = videoTrackRef.current;
-    if (!current) {
+    if (!current || current.readyState === "ended") {
       cameraWantedRef.current = true;
       void startCamera();
       return;
@@ -399,7 +399,7 @@ export function useLocalMedia(options: Partial<CallDefaults> = {}) {
 
   const toggleMicrophone = useCallback(() => {
     const current = audioTrackRef.current;
-    if (!current) {
+    if (!current || current.readyState === "ended") {
       microphoneWantedRef.current = true;
       void startMicrophone();
       return;

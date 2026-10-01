@@ -28,6 +28,7 @@ export function useOutgoingMedia({
   const videoSyncIdRef = useRef(0);
   const [audioError, setAudioError] = useState<string | null>(null);
   const [videoError, setVideoError] = useState<string | null>(null);
+  const [signalingError, setSignalingError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!connected) return;
@@ -39,25 +40,25 @@ export function useOutgoingMedia({
   }, [audioTrack, connected, replaceAudioTrack]);
 
   useEffect(() => {
-    if (!connected) return;
+    if (!connected || videoOverrideActive) return;
     const syncId = ++videoSyncIdRef.current;
-    void (async () => {
-      try {
-        if (!videoOverrideActive) await replaceVideoTrack(videoTrack);
-        if (videoSyncIdRef.current !== syncId) return;
-        const sent = send({
-          type: "media-state",
-          camera: videoOverrideActive || cameraEnabled,
-          microphone: microphoneEnabled,
-        });
-        if (!sent) throw new Error("Signaling is unavailable.");
-        setVideoError(null);
-      } catch {
-        if (videoSyncIdRef.current === syncId) setVideoError("Your camera could not be sent. Turn it off and on again, or rejoin the call.");
-      }
-    })();
+    void replaceVideoTrack(videoTrack)
+      .then(() => { if (videoSyncIdRef.current === syncId) setVideoError(null); })
+      .catch(() => { if (videoSyncIdRef.current === syncId) setVideoError("Your camera could not be sent. Turn it off and on again, or rejoin the call."); });
     return () => { if (videoSyncIdRef.current === syncId) videoSyncIdRef.current += 1; };
-  }, [cameraEnabled, connected, microphoneEnabled, replaceVideoTrack, send, videoOverrideActive, videoTrack]);
+  }, [connected, replaceVideoTrack, videoOverrideActive, videoTrack]);
 
-  return { error: videoError || audioError };
+  useEffect(() => {
+    if (!connected) return;
+    // These flags describe the user's controls. Sending them must not wait for
+    // an unrelated device replacement (or overwrite an in-flight screen share).
+    const sent = send({ type: "media-state", camera: videoOverrideActive || cameraEnabled, microphone: microphoneEnabled });
+    let active = true;
+    queueMicrotask(() => {
+      if (active) setSignalingError(sent ? null : "Your media status could not be shared. Check the signaling connection.");
+    });
+    return () => { active = false; };
+  }, [cameraEnabled, connected, microphoneEnabled, send, videoOverrideActive]);
+
+  return { error: videoError || audioError || signalingError };
 }

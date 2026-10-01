@@ -1,7 +1,7 @@
 import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 
-async function trackLocalMedia(page: Page) {
-  await page.addInitScript(() => {
+async function trackLocalMedia(page: Page, tone = false) {
+  await page.addInitScript((useTone) => {
     const nativePeerConnection = window.RTCPeerConnection;
     const nativeWebSocket = window.WebSocket;
     const peers: RTCPeerConnection[] = [];
@@ -57,7 +57,30 @@ async function trackLocalMedia(page: Page) {
       return stream;
     };
     navigator.mediaDevices.getUserMedia = async (constraints) => {
-      return instrumentStops(await original(constraints), "supportroom:test-stopped-tracks");
+      const stream = await original(constraints);
+      if (useTone && constraints?.audio) {
+        // A known signal lets us verify received audio energy, not just RTP bytes
+        // (silent/muted audio can still send packets).
+        for (const track of stream.getAudioTracks()) { stream.removeTrack(track); track.stop(); }
+        const context = new AudioContext();
+        const oscillator = context.createOscillator();
+        const destination = context.createMediaStreamDestination();
+        oscillator.connect(destination);
+        oscillator.start();
+        await context.resume();
+        const track = destination.stream.getAudioTracks()[0];
+        const contexts = (window as unknown as { supportTestAudioContexts?: AudioContext[] });
+        (contexts.supportTestAudioContexts ??= []).push(context);
+        const stop = track.stop.bind(track);
+        let stopped = false;
+        track.stop = () => {
+          if (stopped) return;
+          stopped = true;
+          stop(); oscillator.stop(); void context.close();
+        };
+        stream.addTrack(track);
+      }
+      return instrumentStops(stream, "supportroom:test-stopped-tracks");
     };
     // Headless Chromium cannot show an operating-system screen picker. Return a
     // separate native video track so the test still exercises replaceTrack().
@@ -66,12 +89,12 @@ async function trackLocalMedia(page: Page) {
       Object.defineProperty(window, "supportTestDisplayStream", { value: stream, configurable: true });
       return stream;
     };
-  });
+  }, tone);
 }
 
-async function startCall(context: BrowserContext, host: Page) {
+async function startCall(context: BrowserContext, host: Page, options: { customerCameraOff?: boolean; hostCameraOff?: boolean; tone?: boolean } = {}) {
   const customer = await context.newPage();
-  await Promise.all([trackLocalMedia(host), trackLocalMedia(customer)]);
+  await Promise.all([trackLocalMedia(host, options.tone), trackLocalMedia(customer, options.tone)]);
 
   await host.goto("/dashboard");
   await host.getByRole("button", { name: "New room" }).click();
@@ -82,9 +105,11 @@ async function startCall(context: BrowserContext, host: Page) {
   await host.getByRole("button", { name: "Open room" }).click();
   await host.getByRole("button", { name: "Start camera" }).click();
   await expect(host.getByTestId("local-video").locator("video")).toHaveJSProperty("paused", false);
+  if (options.hostCameraOff) await host.getByRole("button", { name: "Turn off camera", exact: true }).click();
 
   await customer.goto(invitation!);
   await customer.getByRole("button", { name: "Start preview" }).click();
+  if (options.customerCameraOff) await customer.getByRole("switch", { name: "Toggle Camera", exact: true }).click();
   await customer.getByLabel("Your name").fill("Jordan Taylor");
   await customer.getByRole("button", { name: "Ask to join" }).click();
 
@@ -111,6 +136,93 @@ async function inboundBytes(page: Page, kind: "audio" | "video") {
     return bytes;
   }, kind);
 }
+
+async function receivedEnergy(page: Page) {
+  return page.evaluate(async () => {
+    const peer = (window as unknown as { supportTestPeers: RTCPeerConnection[] }).supportTestPeers.at(-1)!;
+    let energy = 0;
+    (await peer.getStats()).forEach((stat) => {
+      if (stat.type === "inbound-rtp" && stat.kind === "audio") energy += stat.totalAudioEnergy ?? 0;
+    });
+    return energy;
+  });
+}
+
+for (const hostCameraOff of [false, true]) test(`customer camera can start after joining with camera off (host camera ${hostCameraOff ? "off" : "on"})`, async ({ context, page: host }) => {
+  const customer = await startCall(context, host, { customerCameraOff: true, hostCameraOff });
+  await expect(host.getByTestId("remote-video").getByText("Camera is off")).toBeVisible();
+  await customer.getByRole("button", { name: "Turn on camera", exact: true }).click();
+  await expect(host.getByTestId("remote-video").locator("video")).toBeVisible();
+  await expect(host.getByTestId("remote-video").locator("video")).toHaveAttribute("aria-hidden", "false");
+  const bytes = await inboundBytes(host, "video");
+  await expect.poll(() => inboundBytes(host, "video")).toBeGreaterThan(bytes);
+  if (hostCameraOff) {
+    await host.getByRole("button", { name: "Turn on camera", exact: true }).click();
+    await expect(customer.getByTestId("remote-video").locator("video")).toHaveAttribute("aria-hidden", "false");
+    await expect.poll(() => inboundBytes(customer, "video")).toBeGreaterThan(0);
+  }
+  for (const page of [host, customer]) {
+    expect(await page.evaluate(() => {
+      const peers = (window as unknown as { supportTestPeers: RTCPeerConnection[] }).supportTestPeers;
+      return { peers: peers.length, directions: peers[0].getTransceivers().map((item) => item.currentDirection) };
+    })).toEqual({ peers: 1, directions: ["sendrecv", "sendrecv"] });
+  }
+});
+
+test("repeated microphone and camera toggles restore received media on both sides", async ({ context, page: host }) => {
+  test.setTimeout(90_000);
+  const customer = await startCall(context, host, { tone: true });
+  for (const [sender, receiver] of [[host, customer], [customer, host]]) {
+    await expect.poll(() => receivedEnergy(receiver)).toBeGreaterThan(0.001);
+    for (let cycle = 0; cycle < 3; cycle++) {
+      await sender.getByRole("button", { name: "Mute microphone", exact: true }).click();
+      await sender.getByRole("button", { name: "Turn off camera", exact: true }).click();
+      await expect(receiver.getByTestId("remote-video").getByText("Camera is off")).toBeVisible();
+      // Give buffered media a moment to drain, then check that muted audio is silent.
+      await expect.poll(async () => {
+        const before = await receivedEnergy(receiver);
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        return (await receivedEnergy(receiver)) - before;
+      }).toBeLessThan(0.00001);
+      await sender.getByRole("button", { name: "Unmute microphone", exact: true }).click();
+      const energy = await receivedEnergy(receiver);
+      await expect.poll(() => receivedEnergy(receiver)).toBeGreaterThan(energy + 0.001);
+      await sender.getByRole("button", { name: "Turn on camera", exact: true }).click();
+      await expect(receiver.getByTestId("remote-video").locator("video")).toBeVisible();
+      await expect(receiver.getByTestId("remote-video").locator("video")).toHaveAttribute("aria-hidden", "false");
+      const bytes = await inboundBytes(receiver, "video");
+      await expect.poll(() => inboundBytes(receiver, "video")).toBeGreaterThan(bytes);
+      await expect(receiver.getByTestId("remote-video").locator("video")).toHaveJSProperty("paused", false);
+    }
+    expect(await sender.evaluate(() => (window as unknown as { supportTestPeers: RTCPeerConnection[] }).supportTestPeers.length)).toBe(1);
+  }
+});
+
+test("unmute reacquires a microphone that ended while muted", async ({ context, page: host }) => {
+  const customer = await startCall(context, host, { tone: true });
+  await expect.poll(() => receivedEnergy(customer)).toBeGreaterThan(0.001);
+  await host.getByRole("button", { name: "Mute microphone", exact: true }).click();
+  const previous = await host.evaluate(() => {
+    const peer = (window as unknown as { supportTestPeers: RTCPeerConnection[] }).supportTestPeers[0];
+    const track = peer.getSenders().find((sender) => sender.track?.kind === "audio")!.track!;
+    const videoId = peer.getSenders().find((sender) => sender.track?.kind === "video")!.track!.id;
+    // stop() intentionally does not emit ended: exercise a click observing an
+    // ended track before the browser's device-loss event handler has run.
+    track.stop();
+    return { audioId: track.id, videoId };
+  });
+  await host.getByRole("button", { name: "Unmute microphone", exact: true }).click();
+  await expect.poll(() => host.evaluate(() => {
+    const peer = (window as unknown as { supportTestPeers: RTCPeerConnection[] }).supportTestPeers[0];
+    return peer.getSenders().find((sender) => sender.track?.kind === "audio")?.track?.id;
+  })).not.toBe(previous.audioId);
+  const energy = await receivedEnergy(customer);
+  await expect.poll(() => receivedEnergy(customer)).toBeGreaterThan(energy + 0.001);
+  expect(await host.evaluate(() => {
+    const peers = (window as unknown as { supportTestPeers: RTCPeerConnection[] }).supportTestPeers;
+    return { count: peers.length, videoId: peers[0].getSenders().find((sender) => sender.track?.kind === "video")?.track?.id };
+  })).toEqual({ count: 1, videoId: previous.videoId });
+});
 
 test("connects two real browser peers, controls tracks, and cleans up", async ({ context, page: host }) => {
   const customer = await startCall(context, host);

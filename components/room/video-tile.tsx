@@ -63,6 +63,18 @@ export function VideoTile({ stream, name, label, local = false, cameraEnabled = 
 
   useEffect(() => {
     const video = videoRef.current;
+    if (!video || !stream) return;
+    let active = true;
+    // A camera restart or a remote unmute may resume an existing stream without
+    // changing its identity or firing another track event.
+    void video.play()
+      .then(() => { if (active) setPlaybackBlocked(false); })
+      .catch(() => { if (active) setPlaybackBlocked(true); });
+    return () => { active = false; };
+  }, [cameraEnabled, microphoneEnabled, stream]);
+
+  useEffect(() => {
+    const video = videoRef.current;
     if (!video || local || speakerId === undefined) return;
     if (typeof video.setSinkId !== "function") {
       if (speakerId) onSpeakerError?.("Use your device’s sound controls to choose an output in this browser.");
@@ -86,7 +98,9 @@ export function VideoTile({ stream, name, label, local = false, cameraEnabled = 
 
   return (
     <div className={cn("relative min-h-[280px] overflow-hidden rounded-xl border border-white/10 bg-[#202b3d] shadow-xl", className)} data-testid={testId}>
-      <video ref={videoRef} autoPlay muted={local} playsInline className={`absolute inset-0 h-full w-full ${fit === "contain" ? "object-contain" : "object-cover"} ${local ? "[transform:scaleX(-1)]" : ""} ${hasVideo ? "" : "invisible"}`} />
+      {/* Keep the media element playing under the opaque camera-off placeholder.
+          Hiding it can suspend playback, including its audio, in browsers. */}
+      <video ref={videoRef} autoPlay muted={local} playsInline aria-hidden={!hasVideo} className={`absolute inset-0 h-full w-full ${fit === "contain" ? "object-contain" : "object-cover"} ${local ? "[transform:scaleX(-1)]" : ""}`} />
       {!hasVideo && <div className={cn("absolute inset-0 grid place-items-center bg-[radial-gradient(circle_at_center,#34435b_0%,#202b3d_68%)] text-center", compact ? "p-3" : "p-6")}><div><span className={cn("mx-auto grid place-items-center rounded-full bg-white/10", compact ? "size-11" : "size-20")}><UserRound className={cn("text-slate-300", compact ? "size-5" : "size-9")} /></span><p className={cn("text-slate-300", compact ? "mt-2 text-[11px]" : "mt-4 text-sm")}>{!stream ? "Media not connected" : cameraEnabled ? "Camera is reconnecting…" : "Camera is off"}</p>{action && <div className={compact ? "mt-2" : "mt-4"}>{action}</div>}</div></div>}
       {playbackBlocked && !local && <Button size="sm" className="absolute top-4 left-1/2 -translate-x-1/2 bg-white text-slate-950 hover:bg-slate-200" onClick={() => void videoRef.current?.play().then(() => setPlaybackBlocked(false)).catch(() => setPlaybackBlocked(true))}>Play audio and video</Button>}
       <div className={cn("pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-between bg-gradient-to-t from-black/70 to-transparent", compact ? "p-2.5 pt-8" : "p-4 pt-12")}>

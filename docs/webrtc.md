@@ -31,10 +31,12 @@ The sharer's self tile continues to show their camera with a **Presenting** labe
 
 - Turning the camera off removes its track from the local stream, calls `RTCRtpSender.replaceTrack(null)`, and stops the track so the browser can release the camera hardware.
 - Turning the camera back on requests a new video-only track and attaches it to the existing sender with `replaceTrack()`. The peer connection, microphone, and selected ICE route remain in place.
-- Video and audio replacements are serialized so camera-off, camera-on, recovery, and screen-sharing operations cannot overwrite one another out of order. The remote media state is announced only after the matching sender replacement succeeds.
+- Video and audio replacements are serialized per sender. Microphone mute-state messages are independent of camera replacement, so a video change cannot delay a mute indicator or replace a presentation when the microphone is toggled. Media-state flags describe user intent; track events and diagnostics report actual media flow.
 - A transient sender replacement failure is retried once. A persistent failure is shown in the call instead of leaving the local preview on while silently sending no video.
 - Remote video listens for the receiver track's `mute` and `unmute` events. It shows a reconnecting state while frames are unavailable and explicitly resumes playback when media starts flowing again.
 - Microphone mute remains a soft mute through `track.enabled = false`. This provides immediate unmute while sending silence instead of microphone samples.
+- An ended track cannot resume through `enabled = true`. Camera-on and microphone-unmute request a new track when the current one has ended, even if the device-loss event has not yet been handled.
+- The camera-off placeholder covers the playback element without hiding it. Remote audio keeps its playback element while the camera is off, and camera/microphone state changes retry playback without replacing `srcObject`.
 - Camera and microphone `ended` events are handled separately. If one device is unplugged, the other track and the call remain active while the app tries the selected device and then the system default.
 - `devicechange` refreshes the available device list and retries a wanted device that was previously unavailable.
 - A small `media-state` signaling message lets the remote interface distinguish intentional camera/microphone state from network loss. It contains no media.
@@ -51,9 +53,9 @@ Output selection requires HTTPS outside localhost and may be controlled by the `
 
 1. Both participants explicitly start their camera and microphone preview.
 2. The customer asks to join, and the host admits them.
-3. Each browser creates one `RTCPeerConnection`, attaches tracks with `addTrack()`, installs its signal listener, and sends `peer-ready`.
+3. Each browser creates one `RTCPeerConnection`, installs its signal listener, and sends `peer-ready`. The host prepares audio and video `sendrecv` transceivers, including when a device is off.
 4. Once both are ready, the server sends `peers-ready`. The host calls `createOffer()`, saves the result with `setLocalDescription()`, and sends the SDP.
-5. The customer calls `setRemoteDescription()` with the offer, creates an answer, saves it locally, and sends it back. The host saves that answer as its remote description.
+5. The customer calls `setRemoteDescription()` with the offer, attaches its available tracks to the offer-associated transceivers, sets them to `sendrecv`, and creates the answer. It saves the answer locally and sends it back. The host saves that answer as its remote description. The customer does not pre-create unattached transceivers: those would remain unnegotiated when answering and could silently accept a camera track without sending it.
 6. Each browser sends newly gathered ICE candidates through signaling. Received candidates wait until the remote description exists before `addIceCandidate()` applies them.
 7. The `track` event supplies remote tracks. They are collected into a `MediaStream` for playback.
 
@@ -91,6 +93,8 @@ SDP operations and incoming ICE messages are processed sequentially. Local candi
 
 **Track replacement:** `replaceTrack()` changes the source used by an existing RTP sender. Camera and screen are both video tracks, so the transport, transceiver, and negotiated video media section can usually stay in place.
 
+**Negotiated transceiver:** a sender accepting a track does not prove that media can flow. Its transceiver must be associated with an SDP media section and negotiated to send. Starting with the camera off still reserves that section so later camera activation requires only track replacement.
+
 **Transient permission:** screen-sharing permission cannot be saved for later. The browser must ask again and the call must originate from a current user action each time sharing starts.
 
 ## Validation and current limits
@@ -99,8 +103,11 @@ SDP operations and incoming ICE messages are processed sequentially. Local candi
 
 The tests use a separate `.next-e2e` directory and local test ports. Headless Chromium receives a separate fake native video track in place of the operating-system source picker, allowing the test to verify sender replacement, state relay, camera restoration, and display-track cleanup. Signaling tests verify coturn-compatible HMAC credentials and ensure they are sent only after a valid room join. Automated tests do not prove cross-network reliability or exercise your deployed TURN server.
 
+Toggle regression tests cover camera-off admission (including both cameras off), repeated camera and microphone toggles in both directions, and unmuting an ended microphone track. A generated audio tone verifies received audio energy drops to silence while muted and increases after unmute; RTP bytes alone can include silent packets. Tests also verify the existing peer connection is retained.
+
 ## Authoritative resources
 
+- [W3C: RTP media API and transceiver association](https://w3c.github.io/webrtc-pc/#rtp-media-api)
 - [MDN: signaling and video calling](https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API/Signaling_and_video_calling)
 - [MDN: addIceCandidate and its remote-description requirement](https://developer.mozilla.org/en-US/docs/Web/API/RTCPeerConnection/addIceCandidate)
 - [MDN: receiving remote tracks](https://developer.mozilla.org/en-US/docs/Web/API/RTCPeerConnection/track_event)

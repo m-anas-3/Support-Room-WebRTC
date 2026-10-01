@@ -189,6 +189,7 @@ export class PeerConnectionStore {
 
     const replaceVideoTrack = async (track: MediaStreamTrack | null) => {
       if (disposed || !videoSender) throw new Error("The video sender is unavailable.");
+      if (videoSender.track === track) return;
       try {
         await videoSender.replaceTrack(track);
       } catch (firstError) {
@@ -202,6 +203,7 @@ export class PeerConnectionStore {
     };
     const replaceAudioTrack = async (track: MediaStreamTrack | null) => {
       if (disposed || !audioSender) throw new Error("The audio sender is unavailable.");
+      if (audioSender.track === track) return;
       try {
         await audioSender.replaceTrack(track);
       } catch (firstError) {
@@ -380,6 +382,22 @@ export class PeerConnectionStore {
           }
           await pc.setRemoteDescription({ type: "offer", sdp: message.sdp });
           if (disposed) return;
+          if (negotiationCount === 0) {
+            // The answerer must use the transceivers associated with the offer.
+            // Pre-created addTransceiver() senders are not reusable by a remote
+            // offer and would silently remain unnegotiated when starting muted.
+            for (const kind of ["video", "audio"] as const) {
+              const transceiver = pc.getTransceivers().find((item) => item.mid !== null && item.receiver.track.kind === kind);
+              if (!transceiver) throw new Error(`The offer is missing ${kind}.`);
+              transceiver.direction = "sendrecv";
+              transceiver.sender.setStreams(localStream);
+              const track = localStream.getTracks().find((item) => item.kind === kind && item.readyState === "live") ?? null;
+              await transceiver.sender.replaceTrack(track);
+              if (disposed) return;
+              if (kind === "video") videoSender = transceiver.sender;
+              else audioSender = transceiver.sender;
+            }
+          }
           await flushRemoteCandidates();
           if (disposed) return;
           prepareLocalDescription();
@@ -421,10 +439,13 @@ export class PeerConnectionStore {
     };
 
     try {
-      const localVideoTrack = localStream.getVideoTracks()[0];
-      const localAudioTrack = localStream.getAudioTracks()[0];
-      videoSender = localVideoTrack ? pc.addTrack(localVideoTrack, localStream) : pc.addTransceiver("video", { direction: "sendrecv" }).sender;
-      audioSender = localAudioTrack ? pc.addTrack(localAudioTrack, localStream) : pc.addTransceiver("audio", { direction: "sendrecv" }).sender;
+      if (role === "host") {
+        // Always negotiate both media kinds, including when the camera is off.
+        const localVideoTrack = localStream.getVideoTracks().find((track) => track.readyState === "live");
+        const localAudioTrack = localStream.getAudioTracks().find((track) => track.readyState === "live");
+        videoSender = pc.addTransceiver(localVideoTrack ?? "video", { direction: "sendrecv", streams: [localStream] }).sender;
+        audioSender = pc.addTransceiver(localAudioTrack ?? "audio", { direction: "sendrecv", streams: [localStream] }).sender;
+      }
       unsubscribe = subscribeToSignals((message) => {
         // Process async SDP and candidate operations in signaling arrival order.
         handling = handling.then(() => handle(message)).catch(() => {
