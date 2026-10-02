@@ -20,25 +20,6 @@ export function LoadingStatus({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function AppLoading() {
-  return (
-    <main className="flex min-h-dvh flex-col bg-background p-6 sm:p-10">
-      <Brand />
-      <div className="mx-auto my-auto flex w-full max-w-sm flex-col items-center gap-6 py-16">
-        <div
-          aria-hidden="true"
-          className="w-full space-y-3 rounded-2xl border bg-card p-6"
-        >
-          <Skeleton className="h-5 w-2/3" />
-          <Skeleton className="h-4 w-full" />
-          <Skeleton className="h-4 w-4/5" />
-        </div>
-        <LoadingStatus>Loading SupportRoom…</LoadingStatus>
-      </div>
-    </main>
-  );
-}
-
 type WorkspaceKind =
   "overview" | "sessions" | "report" | "settings" | "devices";
 const titles: Record<WorkspaceKind, string> = {

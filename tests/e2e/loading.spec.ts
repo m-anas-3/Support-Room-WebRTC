@@ -16,7 +16,8 @@ test("slow navigation retains the current page without sidebar spinners", async 
     await route.continue();
   });
   try {
-    await page.goto("/dashboard");
+    await page.goto("/");
+    await expect(page).toHaveURL(/\/dashboard$/);
     await expect(
       page.getByRole("heading", { name: "Welcome back, Alex" }),
     ).toBeVisible();

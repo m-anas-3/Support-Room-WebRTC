@@ -46,7 +46,7 @@ Overview and Sessions show Open rooms for unexpired rooms created by the signed-
 
 ## Loading and pending work
 
-Every route has a loading fallback that matches its layout: workspace skeletons, account form skeletons, the guest device preview, and a dark call stage. The root fallback covers session checks before the agent layout is ready. Use the installed shadcn Skeleton component; never delay completed work just to display a loader.
+The app entry routes (`/`, `/dashboard`, and `/login`) render without a startup splash or skeleton. The initial session check completes before rendering the appropriate page. Other routes keep loading fallbacks that match their layout: workspace skeletons, account form skeletons, the guest device preview, and a dark call stage. Use the installed shadcn Skeleton component; never delay completed work just to display a loader.
 
 Sidebar links keep their normal appearance during navigation; loading feedback belongs to the page content. Saving profile or passwords keeps the form visible, disables duplicate submissions, and announces its busy state. Room creation also displays a spinner and locks the reference until it finishes. Media controls retain their existing busy state and lifecycle; video placeholders remain visible until the current source presents a fresh frame.
 
