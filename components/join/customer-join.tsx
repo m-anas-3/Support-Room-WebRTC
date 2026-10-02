@@ -34,7 +34,7 @@ import { CallDeviceSettings } from "@/components/room/call-device-settings";
 import { MediaControls } from "@/components/room/call-controls";
 
 export function CustomerJoin({ roomId }: { roomId: string }) {
-  const media = useLocalMedia({ autoStartGranted: true });
+  const media = useLocalMedia({ prepareOnMount: true });
   const [left, setLeft] = useState(false);
   const [waiting, setWaiting] = useState(false);
   const [name, setName] = useState("");

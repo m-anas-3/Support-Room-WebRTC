@@ -37,16 +37,21 @@ test("sidebar account menu opens and links to settings without crashing", async 
   expect(pageErrors).toEqual([]);
 });
 
-test("settings contains only profile, call defaults, and password essentials", async ({
+test("settings contains profile, call privacy, and password essentials", async ({
   page,
 }) => {
   await page.goto("/settings");
   await expect(page.getByLabel("Full name")).toBeVisible();
   await expect(
     page.getByRole("switch", { name: "Start with camera on" }),
-  ).toBeVisible();
+  ).toHaveCount(0);
   await expect(
     page.getByRole("switch", { name: "Start with microphone on" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByText("Calls always start with your camera and microphone off.", {
+      exact: false,
+    }),
   ).toBeVisible();
   await expect(page.getByLabel("New password")).toBeVisible();
   await expect(page.getByLabel("Confirm password")).toBeVisible();

@@ -29,9 +29,11 @@ The sharer's self tile continues to show their camera with a **Presenting** labe
 
 ## Device lifecycle and recovery
 
-Host rooms and the customer preview use the bottom microphone and camera controls directly. Each control requests only its own device; neither depends on a separate Start camera/preview action. Existing granted browser permissions start each device independently, respecting the agent’s saved camera/microphone defaults. Permission queries are best-effort: browsers that cannot query camera/microphone permissions leave the devices off until the user clicks a control. First-time and denied permissions also remain off; the click lets the browser handle access or shows a useful blocked-access message.
+Host rooms and the customer preview always start with the camera and microphone off, even when browser access is already granted or an old saved startup preference is on. Each bottom control requests only its own device; neither depends on a separate Start camera/preview action. Opening the room, asking to join, admission, and reconnecting do not request capture. Clicking a control lets the browser reuse existing permission or request access, and blocked access shows a useful message.
 
-An empty, stable local `MediaStream` allows admission and negotiation with both devices off. Audio/video transceivers are reserved as usual, so enabling either device later uses track replacement on the existing connection. Permission checks are cancelled on cleanup and ignored after a newer user action, preventing a late result from overriding a toggle or reopening devices after leaving. The standalone Device check page keeps its explicit preview action.
+An empty, stable local `MediaStream` allows admission and negotiation with both devices off. Audio/video transceivers are reserved as usual, so enabling either device later uses track replacement on the existing connection. The standalone Device check page keeps its explicit preview action.
+
+`use-video-frames.ts` keeps the camera-off placeholder visible until the current video source has presented a fresh frame. It uses `requestVideoFrameCallback()` and falls back to media events in older browsers. Camera-off, source changes, and track mute invalidate readiness; stale callbacks cannot reveal the previous frame after a restart. The muted video element uses a video-only stream, while the independent audio element continues playing. The customer preview uses the same frame readiness behavior.
 
 - Turning the camera off removes its track from the local stream, calls `RTCRtpSender.replaceTrack(null)`, and stops the track so the browser can release the camera hardware.
 - Turning the camera back on requests a new video-only track and attaches it to the existing sender with `replaceTrack()`. The peer connection, microphone, and selected ICE route remain in place.
@@ -115,6 +117,7 @@ Toggle regression tests cover camera-off admission (including both cameras off),
 - [web.dev: Google Meet permission design](https://web.dev/case-studies/google-meet-permissions-best-practices)
 - [MDN: querying browser permissions and unsupported permission names](https://developer.mozilla.org/en-US/docs/Web/API/Permissions/query)
 - [MDN: getUserMedia permission and per-device constraints](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia)
+- [MDN: detecting newly presented video frames](https://developer.mozilla.org/en-US/docs/Web/API/HTMLVideoElement/requestVideoFrameCallback)
 
 - [W3C: RTP media API and transceiver association](https://w3c.github.io/webrtc-pc/#rtp-media-api)
 - [MDN: signaling and video calling](https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API/Signaling_and_video_calling)

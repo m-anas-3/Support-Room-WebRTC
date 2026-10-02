@@ -168,7 +168,7 @@ async function requestMedia(
 }
 
 export function useLocalMedia(
-  options: Partial<CallDefaults> & { autoStartGranted?: boolean } = {},
+  options: Partial<CallDefaults> & { prepareOnMount?: boolean } = {},
 ) {
   const initialCameraEnabled = options.cameraEnabled ?? true;
   const initialMicrophoneEnabled = options.microphoneEnabled ?? true;
@@ -184,15 +184,11 @@ export function useLocalMedia(
   const selectedMicrophoneIdRef = useRef("");
   const selectedSpeakerIdRef = useRef("");
   const cameraWantedRef = useRef(
-    options.autoStartGranted ? false : initialCameraEnabled,
+    options.prepareOnMount ? false : initialCameraEnabled,
   );
   const microphoneWantedRef = useRef(
-    options.autoStartGranted ? false : initialMicrophoneEnabled,
+    options.prepareOnMount ? false : initialMicrophoneEnabled,
   );
-  const initialDefaultsRef = useRef({
-    cameraEnabled: initialCameraEnabled,
-    microphoneEnabled: initialMicrophoneEnabled,
-  });
   const videoQualityRef = useRef(options.videoQuality ?? "720");
   const mountedRef = useRef(true);
 
@@ -478,6 +474,10 @@ export function useLocalMedia(
     requestIdRef.current += 1;
     videoRequestIdRef.current += 1;
     audioRequestIdRef.current += 1;
+    if (options.prepareOnMount) {
+      cameraWantedRef.current = false;
+      microphoneWantedRef.current = false;
+    }
     stopTracks(streamRef.current);
     streamRef.current = null;
     videoTrackRef.current = null;
@@ -492,7 +492,7 @@ export function useLocalMedia(
     setIsMicrophoneEnabled(false);
     setError(null);
     setAudioLevel(0);
-  }, []);
+  }, [options.prepareOnMount]);
 
   const toggleCamera = useCallback(() => {
     const current = videoTrackRef.current;
@@ -623,47 +623,16 @@ export function useLocalMedia(
   }, [refreshDevices]);
 
   useEffect(() => {
-    if (!options.autoStartGranted) return;
+    if (!options.prepareOnMount) return;
     let active = true;
-    const lifecycleId = requestIdRef.current;
-    const videoId = videoRequestIdRef.current;
-    const audioId = audioRequestIdRef.current;
     queueMicrotask(() => {
       if (!active) return;
       prepareForCall();
-      const startGranted = async (kind: "camera" | "microphone") => {
-        if (
-          !initialDefaultsRef.current[
-            kind === "camera" ? "cameraEnabled" : "microphoneEnabled"
-          ]
-        )
-          return;
-        try {
-          const permission = await navigator.permissions?.query({
-            name: kind as PermissionName,
-          });
-          if (
-            !active ||
-            lifecycleId !== requestIdRef.current ||
-            permission?.state !== "granted"
-          )
-            return;
-          if (kind === "camera" && videoId === videoRequestIdRef.current)
-            await startCamera();
-          if (kind === "microphone" && audioId === audioRequestIdRef.current)
-            await startMicrophone();
-        } catch {
-          // Some browsers cannot query these permissions. The bottom controls
-          // still request access directly on a user click, without another step.
-        }
-      };
-      void startGranted("camera");
-      void startGranted("microphone");
     });
     return () => {
       active = false;
     };
-  }, [options.autoStartGranted, prepareForCall, startCamera, startMicrophone]);
+  }, [options.prepareOnMount, prepareForCall]);
 
   useEffect(() => {
     if (!audioTrack || !isMicrophoneEnabled) return;

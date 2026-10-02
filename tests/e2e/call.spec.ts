@@ -78,6 +78,14 @@ async function trackLocalMedia(page: Page, tone = false) {
       return stream;
     };
     navigator.mediaDevices.getUserMedia = async (constraints) => {
+      sessionStorage.setItem(
+        "supportroom:test-media-requests",
+        String(
+          Number(
+            sessionStorage.getItem("supportroom:test-media-requests") ?? 0,
+          ) + 1,
+        ),
+      );
       const stream = await original(constraints);
       if (useTone && constraints?.audio) {
         // A known signal lets us verify received audio energy, not just RTP bytes
@@ -133,7 +141,8 @@ async function startCall(
     customerCameraOff?: boolean;
     hostCameraOff?: boolean;
     tone?: boolean;
-    permissionState?: "prompt" | "unsupported";
+    permissionState?: "granted" | "prompt" | "unsupported";
+    devicesOff?: boolean;
   } = {},
 ) {
   const customer = await context.newPage();
@@ -147,7 +156,7 @@ async function startCall(
         navigator.permissions.query = async () => {
           if (state === "unsupported")
             throw new TypeError("Unsupported permission");
-          return { state: "prompt" } as PermissionStatus;
+          return { state } as PermissionStatus;
         };
       }, options.permissionState);
     }
@@ -165,38 +174,69 @@ async function startCall(
   await expect(host.getByRole("button", { name: "Start camera" })).toHaveCount(
     0,
   );
-  if (!options.permissionState) {
+  await expect(
+    host.getByRole("button", { name: "Turn on camera", exact: true }),
+  ).toBeEnabled();
+  await expect(
+    host.getByRole("button", { name: "Unmute microphone", exact: true }),
+  ).toBeEnabled();
+  expect(
+    await host.evaluate(() =>
+      Number(sessionStorage.getItem("supportroom:test-media-requests") ?? 0),
+    ),
+  ).toBe(0);
+  if (!options.devicesOff) {
+    await host
+      .getByRole("button", { name: "Unmute microphone", exact: true })
+      .click();
+    if (!options.hostCameraOff)
+      await host
+        .getByRole("button", { name: "Turn on camera", exact: true })
+        .click();
     await expect(
       host.getByRole("button", { name: "Mute microphone", exact: true }),
     ).toBeEnabled();
-    await expect(
-      host.getByRole("button", { name: "Turn off camera", exact: true }),
-    ).toBeEnabled();
-    await expect(
-      host.getByTestId("local-video").locator("video"),
-    ).toHaveJSProperty("paused", false);
+    if (!options.hostCameraOff)
+      await expect(
+        host.getByRole("button", { name: "Turn off camera", exact: true }),
+      ).toBeEnabled();
+    if (!options.hostCameraOff)
+      await expect(
+        host.getByTestId("local-video").locator("video"),
+      ).toHaveJSProperty("paused", false);
   }
-  if (options.hostCameraOff)
-    await host
-      .getByRole("button", { name: "Turn off camera", exact: true })
-      .click();
 
   await customer.goto(invitation!);
   await expect(
     customer.getByRole("button", { name: "Start preview" }),
   ).toHaveCount(0);
-  if (!options.permissionState) {
+  await expect(
+    customer.getByRole("button", { name: "Turn on camera", exact: true }),
+  ).toBeEnabled();
+  await expect(
+    customer.getByRole("button", { name: "Unmute microphone", exact: true }),
+  ).toBeEnabled();
+  expect(
+    await customer.evaluate(() =>
+      Number(sessionStorage.getItem("supportroom:test-media-requests") ?? 0),
+    ),
+  ).toBe(0);
+  if (!options.devicesOff) {
+    await customer
+      .getByRole("button", { name: "Unmute microphone", exact: true })
+      .click();
+    if (!options.customerCameraOff)
+      await customer
+        .getByRole("button", { name: "Turn on camera", exact: true })
+        .click();
     await expect(
       customer.getByRole("button", { name: "Mute microphone", exact: true }),
     ).toBeEnabled();
-    await expect(
-      customer.getByRole("button", { name: "Turn off camera", exact: true }),
-    ).toBeEnabled();
+    if (!options.customerCameraOff)
+      await expect(
+        customer.getByRole("button", { name: "Turn off camera", exact: true }),
+      ).toBeEnabled();
   }
-  if (options.customerCameraOff)
-    await customer
-      .getByRole("button", { name: "Turn off camera", exact: true })
-      .click();
   await customer.getByLabel("Your name").fill("Jordan Taylor");
   await customer.getByRole("button", { name: "Ask to join" }).click();
 
@@ -220,7 +260,7 @@ async function startCall(
   await expect(
     customer.getByText("Connected · One-to-one support"),
   ).toBeVisible();
-  if (!options.customerCameraOff && !options.permissionState)
+  if (!options.customerCameraOff && !options.devicesOff)
     await expect(
       host.getByTestId("remote-video").locator("video"),
     ).toHaveAttribute("aria-hidden", "false");
@@ -255,7 +295,7 @@ async function receivedEnergy(page: Page) {
   });
 }
 
-for (const permissionState of ["prompt", "unsupported"] as const)
+for (const permissionState of ["granted", "prompt", "unsupported"] as const)
   test(`bottom controls enable media after a device-free join (${permissionState} permissions)`, async ({
     context,
     page: host,
@@ -263,6 +303,7 @@ for (const permissionState of ["prompt", "unsupported"] as const)
     const customer = await startCall(context, host, {
       permissionState,
       tone: true,
+      devicesOff: true,
     });
     for (const page of [host, customer]) {
       await expect(
@@ -364,8 +405,11 @@ test("a blocked camera does not prevent microphone access or admission", async (
     .inputValue();
   await host.getByRole("button", { name: "Open room" }).click();
   await expect(
-    host.getByRole("button", { name: "Mute microphone", exact: true }),
+    host.getByRole("button", { name: "Unmute microphone", exact: true }),
   ).toBeEnabled();
+  await host
+    .getByRole("button", { name: "Unmute microphone", exact: true })
+    .click();
   await host
     .getByRole("button", { name: "Turn on camera", exact: true })
     .click();
@@ -502,6 +546,136 @@ test("repeated microphone and camera toggles restore received media on both side
   }
 });
 
+test("camera restarts stay covered until fresh frames arrive without interrupting audio", async ({
+  context,
+  page: host,
+}) => {
+  await context.addInitScript(() => {
+    const state = { hold: false, frames: [] as (() => void)[] };
+    Object.defineProperty(window, "supportTestFrames", { value: state });
+    const requestFrame = HTMLVideoElement.prototype.requestVideoFrameCallback;
+    HTMLVideoElement.prototype.requestVideoFrameCallback = function (callback) {
+      return requestFrame.call(this, (now, metadata) => {
+        if (state.hold) state.frames.push(() => callback(now, metadata));
+        else callback(now, metadata);
+      });
+    };
+  });
+  const customer = await startCall(context, host, { tone: true });
+  for (const [sender, receiver] of [
+    [host, customer],
+    [customer, host],
+  ]) {
+    for (const page of [sender, receiver]) {
+      await page.evaluate(() => {
+        const state = (
+          window as unknown as {
+            supportTestFrames: { hold: boolean; frames: (() => void)[] };
+          }
+        ).supportTestFrames;
+        state.hold = true;
+        state.frames.length = 0;
+      });
+    }
+    await sender
+      .getByRole("button", { name: "Turn off camera", exact: true })
+      .click();
+    await expect(
+      sender.getByTestId("local-video").locator("video"),
+    ).toHaveAttribute("aria-hidden", "true");
+    await expect(
+      receiver
+        .getByTestId("remote-video")
+        .getByText("Camera is off", { exact: true }),
+    ).toBeVisible();
+    await sender
+      .getByRole("button", { name: "Turn on camera", exact: true })
+      .click();
+    await expect(
+      sender.getByRole("button", { name: "Turn off camera", exact: true }),
+    ).toBeEnabled();
+    for (const page of [sender, receiver]) {
+      await expect
+        .poll(() =>
+          page.evaluate(
+            () =>
+              (
+                window as unknown as {
+                  supportTestFrames: { frames: (() => void)[] };
+                }
+              ).supportTestFrames.frames.length,
+          ),
+        )
+        .toBeGreaterThan(0);
+    }
+    await expect(
+      sender.getByTestId("local-video").locator("video"),
+    ).toHaveAttribute("aria-hidden", "true");
+    await expect(
+      receiver.getByTestId("remote-video").locator("video"),
+    ).toHaveAttribute("aria-hidden", "true");
+    const audioEnergy = await receivedEnergy(receiver);
+    await expect
+      .poll(() => receivedEnergy(receiver))
+      .toBeGreaterThan(audioEnergy);
+    for (const page of [sender, receiver]) {
+      await page.evaluate(() => {
+        const state = (
+          window as unknown as {
+            supportTestFrames: { hold: boolean; frames: (() => void)[] };
+          }
+        ).supportTestFrames;
+        state.hold = false;
+        state.frames.splice(0).forEach((frame) => frame());
+      });
+    }
+    await expect(
+      sender.getByTestId("local-video").locator("video"),
+    ).toHaveAttribute("aria-hidden", "false");
+    await expect(
+      receiver.getByTestId("remote-video").locator("video"),
+    ).toHaveAttribute("aria-hidden", "false");
+    expect(
+      await sender.evaluate(
+        () =>
+          (window as unknown as { supportTestPeers: RTCPeerConnection[] })
+            .supportTestPeers.length,
+      ),
+    ).toBe(1);
+  }
+});
+
+test("camera preview resumes when video frame callbacks are unavailable", async ({
+  context,
+  page: host,
+}) => {
+  await context.addInitScript(() => {
+    Object.defineProperty(
+      HTMLVideoElement.prototype,
+      "requestVideoFrameCallback",
+      { value: undefined, configurable: true },
+    );
+  });
+  const customer = await startCall(context, host);
+  await host
+    .getByRole("button", { name: "Turn off camera", exact: true })
+    .click();
+  await expect(
+    customer
+      .getByTestId("remote-video")
+      .getByText("Camera is off", { exact: true }),
+  ).toBeVisible();
+  await host
+    .getByRole("button", { name: "Turn on camera", exact: true })
+    .click();
+  await expect(
+    host.getByTestId("local-video").locator("video"),
+  ).toHaveAttribute("aria-hidden", "false");
+  await expect(
+    customer.getByTestId("remote-video").locator("video"),
+  ).toHaveAttribute("aria-hidden", "false");
+});
+
 test("unmute reacquires a microphone that ended while muted", async ({
   context,
   page: host,
@@ -579,7 +753,7 @@ test("connects two real browser peers, controls tracks, and cleans up", async ({
           );
         }),
       )
-      .toBe(2);
+      .toBe(1);
     await expect
       .poll(() =>
         remoteVideo.evaluate(
@@ -795,15 +969,15 @@ test("connects two real browser peers, controls tracks, and cleans up", async ({
     host.getByRole("button", { name: "Unmute microphone" }),
   ).toBeVisible();
   expect(
-    await host
-      .getByTestId("local-video")
-      .locator("video")
-      .evaluate(
-        (video) =>
-          (
-            (video as HTMLVideoElement).srcObject as MediaStream
-          ).getAudioTracks()[0]?.enabled,
-      ),
+    await host.evaluate(
+      () =>
+        (
+          window as unknown as { supportTestPeers: RTCPeerConnection[] }
+        ).supportTestPeers
+          .at(-1)
+          ?.getSenders()
+          .find((sender) => sender.track?.kind === "audio")?.track?.enabled,
+    ),
   ).toBe(false);
 
   const peerCountBeforeCameraChanges = await host.evaluate(
@@ -829,8 +1003,8 @@ test("connects two real browser peers, controls tracks, and cleans up", async ({
         .evaluate(
           (video) =>
             (
-              (video as HTMLVideoElement).srcObject as MediaStream
-            ).getVideoTracks().length,
+              (video as HTMLVideoElement).srcObject as MediaStream | null
+            )?.getVideoTracks().length ?? 0,
         ),
     )
     .toBe(0);
@@ -1076,6 +1250,41 @@ test("ending the host room releases the connected customer's devices", async ({
       ),
     )
     .toBeGreaterThanOrEqual(1);
+  const requestsAfterLeaving = await customer.evaluate(() =>
+    Number(sessionStorage.getItem("supportroom:test-media-requests") ?? 0),
+  );
+  await customer
+    .getByRole("button", { name: "Back to device check", exact: true })
+    .click();
+  await expect(
+    customer.getByRole("button", { name: "Turn on camera", exact: true }),
+  ).toBeEnabled();
+  await expect(
+    customer.getByRole("button", { name: "Unmute microphone", exact: true }),
+  ).toBeEnabled();
+  await customer.evaluate(() => {
+    const enumerate = navigator.mediaDevices.enumerateDevices.bind(
+      navigator.mediaDevices,
+    );
+    navigator.mediaDevices.enumerateDevices = async () => {
+      const devices = await enumerate();
+      sessionStorage.setItem("supportroom:test-device-check-completed", "true");
+      return devices;
+    };
+    navigator.mediaDevices.dispatchEvent(new Event("devicechange"));
+  });
+  await expect
+    .poll(() =>
+      customer.evaluate(() =>
+        sessionStorage.getItem("supportroom:test-device-check-completed"),
+      ),
+    )
+    .toBe("true");
+  expect(
+    await customer.evaluate(() =>
+      Number(sessionStorage.getItem("supportroom:test-media-requests") ?? 0),
+    ),
+  ).toBe(requestsAfterLeaving);
 });
 
 test("recovers a dropped signaling socket without releasing local devices", async ({

@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useRef } from "react";
 import { Camera, Loader2, VideoOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { useLocalMedia } from "@/hooks/use-local-media";
+import { useVideoFrames } from "@/hooks/use-video-frames";
 
 export function DevicePreview({
   media,
@@ -19,19 +19,13 @@ export function DevicePreview({
   showStartButton?: boolean;
   className?: string;
 }) {
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const { videoRef, hasFrame } = useVideoFrames(
+    media.stream,
+    media.isCameraEnabled,
+  );
   const ready = media.status === "ready";
   const requesting =
     media.cameraStatus === "requesting" || media.cameraStatus === "recovering";
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
-    video.srcObject = media.stream;
-    if (media.stream) void video.play().catch(() => undefined);
-    return () => {
-      video.srcObject = null;
-    };
-  }, [media.stream, media.videoTrack]);
   return (
     <div
       className={cn(
@@ -44,22 +38,22 @@ export function DevicePreview({
         autoPlay
         muted
         playsInline
-        aria-hidden={!ready || !media.isCameraEnabled}
+        aria-hidden={!hasFrame}
         className="absolute inset-0 h-full w-full object-cover [transform:scaleX(-1)]"
       />
-      {(!ready || !media.isCameraEnabled || requesting) && (
+      {(!hasFrame || requesting) && (
         <div className="absolute inset-0 grid place-items-center bg-[#20232a] p-5 text-center text-white">
           <div>
             <span className="mx-auto grid size-14 place-items-center rounded-2xl border border-white/15 bg-white/5">
-              {requesting ? (
+              {requesting || media.isCameraEnabled ? (
                 <Loader2 className="size-6 animate-spin" />
               ) : (
                 <VideoOff className="size-6 text-white/60" />
               )}
             </span>
             <p className="mt-4 text-sm">
-              {requesting
-                ? "Allow access in your browser"
+              {requesting || media.isCameraEnabled
+                ? "Starting camera…"
                 : ready || !showStartButton
                   ? "Camera is off"
                   : "Let’s check your devices"}

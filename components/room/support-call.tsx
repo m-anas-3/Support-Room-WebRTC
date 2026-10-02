@@ -49,8 +49,8 @@ export function SupportCall({ roomId }: { roomId: string }) {
   const agent = useAgentIdentity();
   const [panel, setPanel] = useState<Panel>(null);
   const media = useLocalMedia({
-    ...agent.callDefaults,
-    autoStartGranted: true,
+    videoQuality: agent.callDefaults.videoQuality,
+    prepareOnMount: true,
   });
   const signaling = useSignaling({
     roomId,

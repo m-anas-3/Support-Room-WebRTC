@@ -4,7 +4,6 @@ import { AppShell } from "@/components/layout/app-shell";
 import { PageHeader } from "@/components/layout/page-header";
 import { useAgentIdentity } from "@/components/auth/agent-identity";
 import { AccountSecurity } from "@/components/settings/account-security";
-import { CallDefaultsForm } from "@/components/settings/call-defaults-form";
 import { ProfileSettingsForm } from "@/components/settings/profile-settings-form";
 
 export default function SettingsPage() {
@@ -24,10 +23,13 @@ export default function SettingsPage() {
             <ProfileSettingsForm agent={agent} />
           </SettingsSection>
           <SettingsSection
-            title="Call defaults"
-            description="Choose how you start each new call."
+            title="Call privacy"
+            description="You choose when your devices are active."
           >
-            <CallDefaultsForm agent={agent} />
+            <p className="text-sm leading-6 text-muted-foreground">
+              Calls always start with your camera and microphone off. Turn
+              either device on using the controls at the bottom of the call.
+            </p>
           </SettingsSection>
           <SettingsSection
             title="Password"

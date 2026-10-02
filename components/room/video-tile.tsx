@@ -10,6 +10,7 @@ import {
 import { Mic, MicOff, UserRound, VideoOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useVideoFrames } from "@/hooks/use-video-frames";
 
 export function VideoTile({
   stream,
@@ -40,15 +41,12 @@ export function VideoTile({
   compact?: boolean;
   className?: string;
 }) {
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const { videoRef, hasFrame: hasVideo } = useVideoFrames(
+    stream,
+    cameraEnabled,
+  );
   const audioRef = useRef<HTMLAudioElement>(null);
   const [playbackBlocked, setPlaybackBlocked] = useState(false);
-  const [remoteVideoFlowing, setRemoteVideoFlowing] = useState(true);
-  const liveVideoTrack = stream
-    ?.getVideoTracks()
-    .find((track) => track.readyState === "live");
-  const hasVideo =
-    Boolean(liveVideoTrack) && cameraEnabled && (local || remoteVideoFlowing);
 
   const playMedia = useCallback(async () => {
     // A negotiated video track may never have produced a frame. Keep remote
@@ -61,12 +59,12 @@ export function VideoTile({
       if ((audio?.srcObject as MediaStream | null)?.getAudioTracks().length)
         await audio?.play();
     }
-  }, [local]);
+  }, [local, videoRef]);
 
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
-    let observedTrack: MediaStreamTrack | null = null;
+    let active = true;
     const audio = audioRef.current;
     const audioStream = new MediaStream();
     if (audio && !local) audio.srcObject = audioStream;
@@ -81,42 +79,26 @@ export function VideoTile({
         for (const track of tracks)
           if (!audioStream.getTrackById(track.id)) audioStream.addTrack(track);
       }
-      const nextTrack =
-        stream?.getVideoTracks().find((track) => track.readyState === "live") ??
-        null;
-      if (nextTrack !== observedTrack) {
-        observedTrack?.removeEventListener("mute", updateFlow);
-        observedTrack?.removeEventListener("unmute", updateFlow);
-        observedTrack?.removeEventListener("ended", updateFlow);
-        observedTrack = nextTrack;
-        observedTrack?.addEventListener("mute", updateFlow);
-        observedTrack?.addEventListener("unmute", updateFlow);
-        observedTrack?.addEventListener("ended", updateFlow);
-      }
-      const flowing = Boolean(
-        nextTrack && !nextTrack.muted && nextTrack.readyState === "live",
-      );
-      setRemoteVideoFlowing(flowing);
       if (stream)
         void playMedia()
-          .then(() => setPlaybackBlocked(false))
-          .catch(() => setPlaybackBlocked(true));
+          .then(() => {
+            if (active) setPlaybackBlocked(false);
+          })
+          .catch(() => {
+            if (active) setPlaybackBlocked(true);
+          });
     };
-    video.srcObject = stream;
     stream?.addEventListener("addtrack", updateFlow);
     stream?.addEventListener("removetrack", updateFlow);
     const initialFlowFrame = requestAnimationFrame(updateFlow);
     return () => {
+      active = false;
       cancelAnimationFrame(initialFlowFrame);
       stream?.removeEventListener("addtrack", updateFlow);
       stream?.removeEventListener("removetrack", updateFlow);
-      observedTrack?.removeEventListener("mute", updateFlow);
-      observedTrack?.removeEventListener("unmute", updateFlow);
-      observedTrack?.removeEventListener("ended", updateFlow);
-      video.srcObject = null;
       if (audio) audio.srcObject = null;
     };
-  }, [local, playMedia, stream]);
+  }, [local, playMedia, stream, videoRef]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -134,7 +116,7 @@ export function VideoTile({
     return () => {
       active = false;
     };
-  }, [cameraEnabled, microphoneEnabled, playMedia, stream]);
+  }, [cameraEnabled, microphoneEnabled, playMedia, stream, videoRef]);
 
   useEffect(() => {
     const audio = audioRef.current;

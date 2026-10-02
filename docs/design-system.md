@@ -32,7 +32,7 @@ Mic/camera labels describe the action they perform. Busy controls are disabled d
 
 ## Settings
 
-Settings is a single page with three sections: name, default camera/microphone state, and password change. No tabs, role/email fields, notifications section, or video-quality selector. Saved quality and notification preferences remain intact. Password verification controls appear only when the server requires reauthentication.
+Settings is a single page with three sections: name, call privacy, and password change. Calls always begin with the camera and microphone off; the privacy section explains this instead of offering conflicting startup switches. No tabs, role/email fields, notifications section, or video-quality selector. Saved quality and notification preferences remain intact. Password verification controls appear only when the server requires reauthentication.
 
 ## Information and accessibility
 
@@ -48,7 +48,7 @@ Overview and Sessions show Open rooms for unexpired rooms created by the signed-
 
 Every route has a loading fallback that matches its layout: workspace skeletons, account form skeletons, the guest device preview, and a dark call stage. The root fallback covers session checks before the agent layout is ready. Use the installed shadcn Skeleton component; never delay completed work just to display a loader.
 
-Sidebar links keep their normal appearance during navigation; loading feedback belongs to the page content. Saving profile, call defaults, or passwords keeps the form visible, disables duplicate submissions, and announces its busy state. Room creation also displays a spinner and locks the reference until it finishes. Media controls retain their existing busy state and lifecycle.
+Sidebar links keep their normal appearance during navigation; loading feedback belongs to the page content. Saving profile or passwords keeps the form visible, disables duplicate submissions, and announces its busy state. Room creation also displays a spinner and locks the reference until it finishes. Media controls retain their existing busy state and lifecycle; video placeholders remain visible until the current source presents a fresh frame.
 
 ## Verification
 
