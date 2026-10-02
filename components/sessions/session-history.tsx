@@ -55,6 +55,11 @@ import {
   sessionDurationSeconds,
   type SupportSession,
 } from "@/lib/sessions/types";
+import { useAgentIdentity } from "@/components/auth/agent-identity";
+import { useCreatedRooms } from "@/hooks/use-created-rooms";
+import { sessionDestination } from "@/lib/signaling/client";
+import { OpenRooms } from "@/components/dashboard/open-rooms";
+import { SessionTableRow } from "./session-table-row";
 
 const noopSubscribe = () => () => undefined;
 
@@ -67,6 +72,14 @@ export function SessionHistory({
   error: string | null;
   referenceTime: string;
 }) {
+  const agent = useAgentIdentity();
+  const rooms = useCreatedRooms(agent.id).filter(
+    (room) =>
+      !sessions.some(
+        (session) =>
+          session.id === room.roomId && session.status === "completed",
+      ),
+  );
   const [query, setQuery] = useState("");
   const [period, setPeriod] = useState("30");
   const [quality, setQuality] = useState("all");
@@ -165,6 +178,7 @@ export function SessionHistory({
             </Button>
           }
         />
+        <OpenRooms rooms={rooms} />
 
         {error && (
           <div
@@ -287,8 +301,10 @@ export function SessionHistory({
                     <TableBody>
                       {filtered.map((session) => {
                         const customer = customerDisplayName(session);
+                        const href = sessionDestination(session, hydrated);
+                        const opensRoom = href.startsWith("/room/");
                         return (
-                          <TableRow key={session.id}>
+                          <SessionTableRow key={session.id} href={href}>
                             <TableCell>
                               <div className="flex items-center gap-3">
                                 <Avatar size="sm">
@@ -297,9 +313,17 @@ export function SessionHistory({
                                   </AvatarFallback>
                                 </Avatar>
                                 <div className="min-w-0">
-                                  <p className="max-w-44 truncate font-medium">
+                                  <Link
+                                    href={href}
+                                    className="block max-w-44 truncate font-medium hover:text-primary hover:underline"
+                                    aria-label={
+                                      opensRoom
+                                        ? `Open room ${session.reference || customer}`
+                                        : `View session ${customer}`
+                                    }
+                                  >
                                     {customer}
-                                  </p>
+                                  </Link>
                                   <p className="text-xs text-muted-foreground">
                                     {shortSessionId(session.id)}
                                   </p>
@@ -330,15 +354,14 @@ export function SessionHistory({
                               <Button
                                 variant="ghost"
                                 size="icon-sm"
-                                render={
-                                  <Link href={`/sessions/${session.id}`} />
-                                }
-                                aria-label={`Open ${shortSessionId(session.id)}`}
+                                nativeButton={false}
+                                render={<Link href={href} />}
+                                aria-label={`${opensRoom ? "Open room" : "View report"} ${shortSessionId(session.id)}`}
                               >
                                 <ChevronRight />
                               </Button>
                             </TableCell>
-                          </TableRow>
+                          </SessionTableRow>
                         );
                       })}
                     </TableBody>
@@ -348,7 +371,7 @@ export function SessionHistory({
                   {filtered.map((session) => (
                     <Link
                       key={session.id}
-                      href={`/sessions/${session.id}`}
+                      href={sessionDestination(session, hydrated)}
                       className="flex min-w-0 items-center gap-3 p-4 hover:bg-muted/50"
                     >
                       <Avatar>
@@ -372,7 +395,11 @@ export function SessionHistory({
                         variant="outline"
                         className={qualityTone(session.quality_score)}
                       >
-                        {sessionQuality(session)}
+                        {sessionDestination(session, hydrated).startsWith(
+                          "/room/",
+                        )
+                          ? "Open room"
+                          : sessionQuality(session)}
                       </Badge>
                       <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
                     </Link>

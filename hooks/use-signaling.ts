@@ -1,24 +1,54 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { serverMessageSchema, type ClientMessage, type IceConfiguration, type RoomSnapshot, type SignalMessage } from "@support-room/shared";
-import { readHostRoom, signalingUrl } from "@/lib/signaling/client";
+import {
+  serverMessageSchema,
+  type ClientMessage,
+  type IceConfiguration,
+  type RoomSnapshot,
+  type SignalMessage,
+} from "@support-room/shared";
+import {
+  forgetHostRoom,
+  readHostRoom,
+  signalingUrl,
+} from "@/lib/signaling/client";
 
-type ConnectionStatus = "connecting" | "connected" | "reconnecting" | "disconnected" | "error" | "closed" | "declined";
+type ConnectionStatus =
+  | "connecting"
+  | "connected"
+  | "reconnecting"
+  | "disconnected"
+  | "error"
+  | "closed"
+  | "declined";
 
 const INITIAL_RETRY_LIMIT = 3;
 const RECONNECT_WINDOW_MS = 25_000;
 const RESPONSE_TIMEOUT_MS = 5_000;
 const MAX_RETRY_DELAY_MS = 4_000;
 
-export function useSignaling({ roomId, role, name, enabled = true, onDisconnect }: { roomId: string; role: "host" | "customer"; name: string; enabled?: boolean; onDisconnect?: () => void }) {
+export function useSignaling({
+  roomId,
+  role,
+  name,
+  enabled = true,
+  onDisconnect,
+}: {
+  roomId: string;
+  role: "host" | "customer";
+  name: string;
+  enabled?: boolean;
+  onDisconnect?: () => void;
+}) {
   const socketRef = useRef<WebSocket | null>(null);
   const intentionalCloseRef = useRef(false);
   const onDisconnectRef = useRef(onDisconnect);
   const signalListeners = useRef(new Set<(message: SignalMessage) => void>());
   const [status, setStatus] = useState<ConnectionStatus>("connecting");
   const [room, setRoom] = useState<RoomSnapshot | null>(null);
-  const [iceConfiguration, setIceConfiguration] = useState<IceConfiguration | null>(null);
+  const [iceConfiguration, setIceConfiguration] =
+    useState<IceConfiguration | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reconnectAttempt, setReconnectAttempt] = useState(0);
 
@@ -57,19 +87,28 @@ export function useSignaling({ roomId, role, name, enabled = true, onDisconnect 
       setReconnectAttempt(0);
       notifyDisconnect();
     };
-    const accessToken = () => role === "host"
-      ? readHostRoom(roomId)?.hostToken
-      : new URLSearchParams(window.location.hash.slice(1)).get("token");
+    const accessToken = () =>
+      role === "host"
+        ? readHostRoom(roomId)?.hostToken
+        : new URLSearchParams(window.location.hash.slice(1)).get("token");
 
     const scheduleReconnect = () => {
       if (!active || terminal || intentionalCloseRef.current) return;
       const now = Date.now();
       if (hasJoined) reconnectStartedAt ??= now;
-      const recoveryExpired = hasJoined && reconnectStartedAt !== null && now - reconnectStartedAt >= RECONNECT_WINDOW_MS;
-      if (recoveryExpired || (!hasJoined && retryCount >= INITIAL_RETRY_LIMIT)) {
-        stopWithError(hasJoined
-          ? "The signaling connection could not be restored. Check your network and rejoin the room."
-          : "Cannot reach the signaling server. Check your network and try again.");
+      const recoveryExpired =
+        hasJoined &&
+        reconnectStartedAt !== null &&
+        now - reconnectStartedAt >= RECONNECT_WINDOW_MS;
+      if (
+        recoveryExpired ||
+        (!hasJoined && retryCount >= INITIAL_RETRY_LIMIT)
+      ) {
+        stopWithError(
+          hasJoined
+            ? "The signaling connection could not be restored. Check your network and rejoin the room."
+            : "Cannot reach the signaling server. Check your network and try again.",
+        );
         return;
       }
 
@@ -81,7 +120,11 @@ export function useSignaling({ roomId, role, name, enabled = true, onDisconnect 
       retryTimer = setTimeout(connect, delay);
     };
 
-    const handleTerminalMessage = (nextStatus: "closed" | "declined", message: string) => {
+    const handleTerminalMessage = (
+      nextStatus: "closed" | "declined",
+      message: string,
+    ) => {
+      if (role === "host" && nextStatus === "closed") forgetHostRoom(roomId);
       terminal = true;
       setStatus(nextStatus);
       setRoom(null);
@@ -111,24 +154,35 @@ export function useSignaling({ roomId, role, name, enabled = true, onDisconnect 
 
       const activeSocket = socket;
       socketRef.current = activeSocket;
-      responseTimer = setTimeout(() => activeSocket.close(), RESPONSE_TIMEOUT_MS);
+      responseTimer = setTimeout(
+        () => activeSocket.close(),
+        RESPONSE_TIMEOUT_MS,
+      );
 
       activeSocket.onopen = () => {
         const token = accessToken();
         if (!token) {
           clearResponseTimer();
-          stopWithError(role === "host"
-            ? "Create a room from the dashboard in this browser tab first."
-            : "This invitation is missing its access token. Ask the agent for a new link.");
+          stopWithError(
+            role === "host"
+              ? "Create a room from the dashboard in this browser tab first."
+              : "This invitation is missing its access token. Ask the agent for a new link.",
+          );
           activeSocket.close();
           return;
         }
-        activeSocket.send(JSON.stringify({ type: "join-room", roomId, token, role, name }));
+        activeSocket.send(
+          JSON.stringify({ type: "join-room", roomId, token, role, name }),
+        );
       };
 
       activeSocket.onmessage = (event) => {
         let json: unknown;
-        try { json = JSON.parse(event.data); } catch { return; }
+        try {
+          json = JSON.parse(event.data);
+        } catch {
+          return;
+        }
         const parsed = serverMessageSchema.safeParse(json);
         if (!parsed.success) return;
         const message = parsed.data;
@@ -148,6 +202,11 @@ export function useSignaling({ roomId, role, name, enabled = true, onDisconnect 
             setError(null);
             break;
           case "error":
+            if (
+              role === "host" &&
+              ["ROOM_UNAVAILABLE", "INVALID_TOKEN"].includes(message.code)
+            )
+              forgetHostRoom(roomId);
             setError(message.message);
             if (!joinedThisSocket) {
               terminal = true;
@@ -157,14 +216,29 @@ export function useSignaling({ roomId, role, name, enabled = true, onDisconnect 
             }
             break;
           case "declined":
-            handleTerminalMessage("declined", "The support agent declined your request.");
+            handleTerminalMessage(
+              "declined",
+              "The support agent declined your request.",
+            );
             signalListeners.current.forEach((listener) => listener(message));
             break;
           case "room-closed":
-            handleTerminalMessage("closed", message.reason === "expired" ? "This room has expired." : "The support agent ended this room.");
+            handleTerminalMessage(
+              "closed",
+              message.reason === "expired"
+                ? "This room has expired."
+                : "The support agent ended this room.",
+            );
             signalListeners.current.forEach((listener) => listener(message));
             break;
-          case "offer": case "answer": case "ice-candidate": case "ice-restart-request": case "screen-share-state": case "media-state": case "peers-ready": case "peer-left":
+          case "offer":
+          case "answer":
+          case "ice-candidate":
+          case "ice-restart-request":
+          case "screen-share-state":
+          case "media-state":
+          case "peers-ready":
+          case "peer-left":
             signalListeners.current.forEach((listener) => listener(message));
             break;
         }
@@ -209,21 +283,28 @@ export function useSignaling({ roomId, role, name, enabled = true, onDisconnect 
 
   const leave = useCallback(() => {
     intentionalCloseRef.current = true;
-    if (socketRef.current?.readyState === WebSocket.OPEN) socketRef.current.send(JSON.stringify({ type: "leave" }));
+    if (socketRef.current?.readyState === WebSocket.OPEN)
+      socketRef.current.send(JSON.stringify({ type: "leave" }));
     socketRef.current?.close();
     setStatus("closed");
     setRoom(null);
     setIceConfiguration(null);
     setReconnectAttempt(0);
-  }, []);
+    if (role === "host") forgetHostRoom(roomId);
+  }, [role, roomId]);
 
-  const subscribeToSignals = useCallback((listener: (message: SignalMessage) => void) => {
-    signalListeners.current.add(listener);
-    return () => { signalListeners.current.delete(listener); };
-  }, []);
+  const subscribeToSignals = useCallback(
+    (listener: (message: SignalMessage) => void) => {
+      signalListeners.current.add(listener);
+      return () => {
+        signalListeners.current.delete(listener);
+      };
+    },
+    [],
+  );
 
   return {
-    status: enabled ? status : "idle" as const,
+    status: enabled ? status : ("idle" as const),
     room: enabled ? room : null,
     iceConfiguration: enabled ? iceConfiguration : null,
     error: enabled ? error : null,

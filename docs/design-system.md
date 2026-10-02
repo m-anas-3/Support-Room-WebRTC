@@ -40,11 +40,15 @@ Connection quality and expected media activity come before technical details. Un
 
 Keep one page h1, named icon buttons, visible focus, readable contrast, 44px primary mobile targets, and reduced-motion support. Error messages include a useful next action. Treat loading, unavailable data, empty history, and no filter matches as separate states.
 
+## Room navigation
+
+Overview and Sessions show Open rooms for unexpired rooms created by the signed-in agent in the current browser tab. Host credentials stay in sessionStorage. Closing the creation dialog, navigating away, or refreshing the tab preserves access. Ending a room or receiving an unavailable-room response clears saved access. Session table rows navigate from any non-interactive cell and retain a real link for keyboard access. Available rooms open their call screen; completed or unavailable sessions open their report.
+
 ## Loading and pending work
 
 Every route has a loading fallback that matches its layout: workspace skeletons, account form skeletons, the guest device preview, and a dark call stage. The root fallback covers session checks before the agent layout is ready. Use the installed shadcn Skeleton component; never delay completed work just to display a loader.
 
-Sidebar links show a reserved-space indicator while navigation is pending. Saving profile, call defaults, or passwords keeps the form visible, disables duplicate submissions, and announces its busy state. Room creation also displays a spinner and locks the reference until it finishes. Media controls retain their existing busy state and lifecycle.
+Sidebar links keep their normal appearance during navigation; loading feedback belongs to the page content. Saving profile, call defaults, or passwords keeps the form visible, disables duplicate submissions, and announces its busy state. Room creation also displays a spinner and locks the reference until it finishes. Media controls retain their existing busy state and lifecycle.
 
 ## Verification
 

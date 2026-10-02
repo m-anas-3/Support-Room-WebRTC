@@ -146,7 +146,7 @@ export function CreateRoomDialog() {
                   setError(null);
                   setHistoryWarning(null);
                   try {
-                    const room = await createSupportRoom(reference);
+                    const room = await createSupportRoom(reference, agent.id);
                     try {
                       await createSessionRecord({
                         roomId: room.roomId,

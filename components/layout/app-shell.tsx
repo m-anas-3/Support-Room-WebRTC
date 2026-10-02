@@ -9,7 +9,6 @@ import {
   History,
   LayoutDashboard,
   LogOut,
-  Loader2,
   Settings,
   Video,
 } from "lucide-react";
@@ -28,7 +27,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Brand } from "@/components/layout/brand";
-import { NavigationPending } from "@/components/layout/navigation-pending";
 import {
   Sidebar,
   SidebarContent,
@@ -103,7 +101,6 @@ export function AppShell({
                     >
                       <Icon />
                       <span>{label}</span>
-                      <NavigationPending />
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 ))}
@@ -138,7 +135,6 @@ export function AppShell({
                     <DropdownMenuItem render={<Link href="/settings" />}>
                       <Settings />
                       Account settings
-                      <NavigationPending />
                     </DropdownMenuItem>
                   </DropdownMenuGroup>
                   <DropdownMenuSeparator />
@@ -151,11 +147,7 @@ export function AppShell({
                       })
                     }
                   >
-                    {signingOut ? (
-                      <Loader2 className="animate-spin motion-reduce:animate-none" />
-                    ) : (
-                      <LogOut />
-                    )}
+                    <LogOut />
                     {signingOut ? "Signing out…" : "Sign out"}
                   </DropdownMenuItem>
                 </DropdownMenuContent>

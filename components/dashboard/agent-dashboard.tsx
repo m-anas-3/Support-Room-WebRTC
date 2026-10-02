@@ -52,6 +52,10 @@ import {
   type SupportSession,
 } from "@/lib/sessions/types";
 import { CreateRoomDialog } from "./create-room-dialog";
+import { OpenRooms } from "./open-rooms";
+import { useCreatedRooms } from "@/hooks/use-created-rooms";
+import { sessionDestination } from "@/lib/signaling/client";
+import { SessionTableRow } from "@/components/sessions/session-table-row";
 
 const noopSubscribe = () => () => undefined;
 
@@ -65,6 +69,13 @@ export function AgentDashboard({
   referenceTime: string;
 }) {
   const agent = useAgentIdentity();
+  const rooms = useCreatedRooms(agent.id).filter(
+    (room) =>
+      !sessions.some(
+        (session) =>
+          session.id === room.roomId && session.status === "completed",
+      ),
+  );
   const hydrated = useSyncExternalStore(
     noopSubscribe,
     () => true,
@@ -112,6 +123,7 @@ export function AgentDashboard({
           description="A little clarity before your next conversation."
           actions={<CreateRoomDialog />}
         />
+        <OpenRooms rooms={rooms} />
         <section className="grid overflow-hidden rounded-2xl border bg-white lg:grid-cols-[1.65fr_1fr]">
           <div className="relative p-6 sm:p-8">
             <div className="mb-7 inline-flex size-11 items-center justify-center rounded-xl bg-primary/8 text-primary">
@@ -232,8 +244,10 @@ export function AgentDashboard({
                 <TableBody>
                   {recent.map((session) => {
                     const customer = customerDisplayName(session);
+                    const href = sessionDestination(session, hydrated);
+                    const opensRoom = href.startsWith("/room/");
                     return (
-                      <TableRow key={session.id}>
+                      <SessionTableRow key={session.id} href={href}>
                         <TableCell>
                           <div className="flex items-center gap-3">
                             <Avatar size="sm">
@@ -242,7 +256,12 @@ export function AgentDashboard({
                               </AvatarFallback>
                             </Avatar>
                             <Link
-                              href={`/sessions/${session.id}`}
+                              href={href}
+                              aria-label={
+                                opensRoom
+                                  ? `Open room ${session.reference || customer}`
+                                  : `View session ${customer}`
+                              }
                               className="max-w-44 truncate font-medium hover:text-primary hover:underline"
                             >
                               {customer}
@@ -266,7 +285,7 @@ export function AgentDashboard({
                             {sessionQuality(session)}
                           </Badge>
                         </TableCell>
-                      </TableRow>
+                      </SessionTableRow>
                     );
                   })}
                 </TableBody>
