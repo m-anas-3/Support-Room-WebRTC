@@ -88,7 +88,6 @@ export function CustomerCall({
         <CallControls
           microphoneEnabled={microphoneEnabled}
           cameraEnabled={cameraEnabled}
-          mediaReady
           cameraChanging={cameraChanging}
           microphoneChanging={microphoneChanging}
           screenShareReady={connectionState === "connected"}

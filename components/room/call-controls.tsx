@@ -2,6 +2,7 @@
 
 import {
   Camera,
+  Loader2,
   Mic,
   MicOff,
   MonitorUp,
@@ -32,7 +33,6 @@ import { cn } from "@/lib/utils";
 export function CallControls({
   microphoneEnabled,
   cameraEnabled,
-  mediaReady,
   cameraChanging = false,
   microphoneChanging = false,
   screenShareReady,
@@ -48,7 +48,6 @@ export function CallControls({
 }: {
   microphoneEnabled: boolean;
   cameraEnabled: boolean;
-  mediaReady: boolean;
   cameraChanging?: boolean;
   microphoneChanging?: boolean;
   screenShareReady: boolean;
@@ -64,35 +63,14 @@ export function CallControls({
 }) {
   return (
     <div className="flex items-center justify-center gap-2 rounded-2xl border border-border bg-card p-2 sm:gap-3">
-      <ControlButton
-        label={
-          microphoneChanging
-            ? "Changing microphone"
-            : microphoneEnabled
-              ? "Mute microphone"
-              : "Unmute microphone"
-        }
-        icon={microphoneEnabled ? Mic : MicOff}
-        active={!microphoneEnabled}
-        disabled={!mediaReady || microphoneChanging}
-        onClick={onToggleMicrophone}
-      />
-      <ControlButton
-        label={
-          cameraChanging
-            ? "Changing camera"
-            : screenSharing
-              ? "Camera controls are paused while presenting"
-              : cameraEnabled
-                ? "Turn off camera"
-                : "Turn on camera"
-        }
-        icon={cameraEnabled ? Camera : VideoOff}
-        active={!cameraEnabled && !screenSharing}
-        disabled={
-          !mediaReady || cameraChanging || screenSharing || screenShareChanging
-        }
-        onClick={onToggleCamera}
+      <MediaControls
+        microphoneEnabled={microphoneEnabled}
+        cameraEnabled={cameraEnabled}
+        microphoneChanging={microphoneChanging}
+        cameraChanging={cameraChanging}
+        cameraPaused={screenSharing || screenShareChanging}
+        onToggleMicrophone={onToggleMicrophone}
+        onToggleCamera={onToggleCamera}
       />
       <ControlButton
         label={
@@ -157,12 +135,66 @@ export function CallControls({
   );
 }
 
+export function MediaControls({
+  microphoneEnabled,
+  cameraEnabled,
+  microphoneChanging = false,
+  cameraChanging = false,
+  cameraPaused = false,
+  onToggleMicrophone,
+  onToggleCamera,
+}: {
+  microphoneEnabled: boolean;
+  cameraEnabled: boolean;
+  microphoneChanging?: boolean;
+  cameraChanging?: boolean;
+  cameraPaused?: boolean;
+  onToggleMicrophone: () => void;
+  onToggleCamera: () => void;
+}) {
+  return (
+    <>
+      <ControlButton
+        label={
+          microphoneChanging
+            ? "Changing microphone"
+            : microphoneEnabled
+              ? "Mute microphone"
+              : "Unmute microphone"
+        }
+        icon={microphoneEnabled ? Mic : MicOff}
+        active={!microphoneEnabled}
+        busy={microphoneChanging}
+        disabled={microphoneChanging}
+        onClick={onToggleMicrophone}
+      />
+      <ControlButton
+        label={
+          cameraChanging
+            ? "Changing camera"
+            : cameraPaused
+              ? "Camera controls are paused while presenting"
+              : cameraEnabled
+                ? "Turn off camera"
+                : "Turn on camera"
+        }
+        icon={cameraEnabled ? Camera : VideoOff}
+        active={!cameraEnabled && !cameraPaused}
+        busy={cameraChanging}
+        disabled={cameraChanging || cameraPaused}
+        onClick={onToggleCamera}
+      />
+    </>
+  );
+}
+
 function ControlButton({
   label,
   icon: Icon,
   active = false,
   activeTone = "danger",
   disabled = false,
+  busy = false,
   onClick,
 }: {
   label: string;
@@ -170,6 +202,7 @@ function ControlButton({
   active?: boolean;
   activeTone?: "danger" | "accent";
   disabled?: boolean;
+  busy?: boolean;
   onClick?: () => void;
 }) {
   return (
@@ -181,6 +214,7 @@ function ControlButton({
               size="icon-lg"
               variant="ghost"
               aria-label={label}
+              aria-busy={busy}
               disabled={disabled}
               onClick={onClick}
               className={cn(
@@ -193,7 +227,7 @@ function ControlButton({
                   "bg-primary text-primary-foreground hover:bg-primary/80 hover:text-primary-foreground",
               )}
             >
-              <Icon />
+              {busy ? <Loader2 className="animate-spin" /> : <Icon />}
             </Button>
           </span>
         }

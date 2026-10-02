@@ -91,7 +91,7 @@ async function trackLocalMedia(page: Page, tone = false) {
         const destination = context.createMediaStreamDestination();
         oscillator.connect(destination);
         oscillator.start();
-        await context.resume();
+        void context.resume();
         const track = destination.stream.getAudioTracks()[0];
         const contexts = window as unknown as {
           supportTestAudioContexts?: AudioContext[];
@@ -133,6 +133,7 @@ async function startCall(
     customerCameraOff?: boolean;
     hostCameraOff?: boolean;
     tone?: boolean;
+    permissionState?: "prompt" | "unsupported";
   } = {},
 ) {
   const customer = await context.newPage();
@@ -140,6 +141,17 @@ async function startCall(
     trackLocalMedia(host, options.tone),
     trackLocalMedia(customer, options.tone),
   ]);
+  if (options.permissionState) {
+    for (const page of [host, customer]) {
+      await page.addInitScript((state) => {
+        navigator.permissions.query = async () => {
+          if (state === "unsupported")
+            throw new TypeError("Unsupported permission");
+          return { state: "prompt" } as PermissionStatus;
+        };
+      }, options.permissionState);
+    }
+  }
 
   await host.goto("/dashboard");
   await host.getByRole("button", { name: "New room" }).click();
@@ -150,20 +162,40 @@ async function startCall(
     .inputValue();
   expect(invitation).toBeTruthy();
   await host.getByRole("button", { name: "Open room" }).click();
-  await host.getByRole("button", { name: "Start camera" }).click();
-  await expect(
-    host.getByTestId("local-video").locator("video"),
-  ).toHaveJSProperty("paused", false);
+  await expect(host.getByRole("button", { name: "Start camera" })).toHaveCount(
+    0,
+  );
+  if (!options.permissionState) {
+    await expect(
+      host.getByRole("button", { name: "Mute microphone", exact: true }),
+    ).toBeEnabled();
+    await expect(
+      host.getByRole("button", { name: "Turn off camera", exact: true }),
+    ).toBeEnabled();
+    await expect(
+      host.getByTestId("local-video").locator("video"),
+    ).toHaveJSProperty("paused", false);
+  }
   if (options.hostCameraOff)
     await host
       .getByRole("button", { name: "Turn off camera", exact: true })
       .click();
 
   await customer.goto(invitation!);
-  await customer.getByRole("button", { name: "Start preview" }).click();
+  await expect(
+    customer.getByRole("button", { name: "Start preview" }),
+  ).toHaveCount(0);
+  if (!options.permissionState) {
+    await expect(
+      customer.getByRole("button", { name: "Mute microphone", exact: true }),
+    ).toBeEnabled();
+    await expect(
+      customer.getByRole("button", { name: "Turn off camera", exact: true }),
+    ).toBeEnabled();
+  }
   if (options.customerCameraOff)
     await customer
-      .getByRole("switch", { name: "Toggle Camera", exact: true })
+      .getByRole("button", { name: "Turn off camera", exact: true })
       .click();
   await customer.getByLabel("Your name").fill("Jordan Taylor");
   await customer.getByRole("button", { name: "Ask to join" }).click();
@@ -188,7 +220,7 @@ async function startCall(
   await expect(
     customer.getByText("Connected · One-to-one support"),
   ).toBeVisible();
-  if (!options.customerCameraOff)
+  if (!options.customerCameraOff && !options.permissionState)
     await expect(
       host.getByTestId("remote-video").locator("video"),
     ).toHaveAttribute("aria-hidden", "false");
@@ -222,6 +254,139 @@ async function receivedEnergy(page: Page) {
     return energy;
   });
 }
+
+for (const permissionState of ["prompt", "unsupported"] as const)
+  test(`bottom controls enable media after a device-free join (${permissionState} permissions)`, async ({
+    context,
+    page: host,
+  }) => {
+    const customer = await startCall(context, host, {
+      permissionState,
+      tone: true,
+    });
+    for (const page of [host, customer]) {
+      await expect(
+        page.getByRole("button", { name: "Turn on camera", exact: true }),
+      ).toBeEnabled();
+      await expect(
+        page.getByRole("button", { name: "Unmute microphone", exact: true }),
+      ).toBeEnabled();
+      expect(
+        await page.evaluate(() => {
+          const peer = (
+            window as unknown as { supportTestPeers: RTCPeerConnection[] }
+          ).supportTestPeers[0];
+          return peer.getSenders().map((sender) => sender.track);
+        }),
+      ).toEqual([null, null]);
+    }
+    // Microphone access does not turn on the camera, and vice versa.
+    await host
+      .getByRole("button", { name: "Unmute microphone", exact: true })
+      .click();
+    await expect(
+      host.getByRole("button", { name: "Mute microphone", exact: true }),
+    ).toBeEnabled();
+    await expect(
+      host.getByRole("button", { name: "Turn on camera", exact: true }),
+    ).toBeEnabled();
+    await expect.poll(() => inboundBytes(customer, "audio")).toBeGreaterThan(0);
+    await expect(
+      customer.getByTestId("remote-video").locator("audio"),
+    ).toHaveJSProperty("paused", false);
+    await expect
+      .poll(() =>
+        customer
+          .getByTestId("remote-video")
+          .locator("audio")
+          .evaluate((audio: HTMLAudioElement) => audio.readyState),
+      )
+      .toBeGreaterThanOrEqual(2);
+    await expect.poll(() => receivedEnergy(customer)).toBeGreaterThan(0);
+    await customer
+      .getByRole("button", { name: "Turn on camera", exact: true })
+      .click();
+    await expect(
+      customer.getByRole("button", { name: "Unmute microphone", exact: true }),
+    ).toBeEnabled();
+    await expect.poll(() => inboundBytes(host, "video")).toBeGreaterThan(0);
+    for (const [sender, receiver] of [
+      [host, customer],
+      [customer, host],
+    ]) {
+      if (sender === host)
+        await sender
+          .getByRole("button", { name: "Turn on camera", exact: true })
+          .click();
+      else
+        await sender
+          .getByRole("button", { name: "Unmute microphone", exact: true })
+          .click();
+      await expect
+        .poll(() => inboundBytes(receiver, "video"))
+        .toBeGreaterThan(0);
+      await expect.poll(() => receivedEnergy(receiver)).toBeGreaterThan(0);
+      expect(
+        await sender.evaluate(
+          () =>
+            (window as unknown as { supportTestPeers: RTCPeerConnection[] })
+              .supportTestPeers.length,
+        ),
+      ).toBe(1);
+    }
+    await customer.screenshot({
+      path: test.info().outputPath("customer-bottom-media-controls.png"),
+    });
+  });
+
+test("a blocked camera does not prevent microphone access or admission", async ({
+  context,
+  page: host,
+}) => {
+  // Create through the normal UI so room credentials stay scoped to the tab.
+  await host.addInitScript(() => {
+    const getUserMedia = navigator.mediaDevices.getUserMedia.bind(
+      navigator.mediaDevices,
+    );
+    navigator.permissions.query = async ({ name }) =>
+      ({ state: name === "camera" ? "denied" : "granted" }) as PermissionStatus;
+    navigator.mediaDevices.getUserMedia = async (constraints) => {
+      if (constraints?.video)
+        throw new DOMException("Camera blocked", "NotAllowedError");
+      return getUserMedia(constraints);
+    };
+  });
+  await host.goto("/dashboard");
+  await host.getByRole("button", { name: "New room" }).click();
+  await host.getByRole("button", { name: "Create room" }).click();
+  const invitation = await host
+    .getByRole("textbox", { name: "Invitation link" })
+    .inputValue();
+  await host.getByRole("button", { name: "Open room" }).click();
+  await expect(
+    host.getByRole("button", { name: "Mute microphone", exact: true }),
+  ).toBeEnabled();
+  await host
+    .getByRole("button", { name: "Turn on camera", exact: true })
+    .click();
+  await expect(
+    host.getByText("Camera access was blocked.", { exact: false }),
+  ).toBeVisible();
+  await host
+    .getByRole("button", { name: "Mute microphone", exact: true })
+    .click();
+  await expect(
+    host.getByRole("button", { name: "Unmute microphone", exact: true }),
+  ).toBeEnabled();
+  const customer = await context.newPage();
+  await customer.goto(invitation);
+  await customer.getByLabel("Your name").fill("Camera-free guest");
+  await customer.getByRole("button", { name: "Ask to join" }).click();
+  await host.getByRole("button", { name: "Admit", exact: true }).click();
+  await expect(
+    customer.getByText("Connected · One-to-one support"),
+  ).toBeVisible();
+});
 
 for (const hostCameraOff of [false, true])
   test(`customer camera can start after joining with camera off (host camera ${hostCameraOff ? "off" : "on"})`, async ({

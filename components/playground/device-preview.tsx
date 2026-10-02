@@ -10,16 +10,19 @@ export function DevicePreview({
   media,
   name = "Only visible to you",
   startLabel = "Start preview",
+  showStartButton = true,
   className,
 }: {
   media: ReturnType<typeof useLocalMedia>;
   name?: string;
   startLabel?: string;
+  showStartButton?: boolean;
   className?: string;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const ready = media.status === "ready";
-  const requesting = media.status === "requesting";
+  const requesting =
+    media.cameraStatus === "requesting" || media.cameraStatus === "recovering";
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
@@ -28,7 +31,7 @@ export function DevicePreview({
     return () => {
       video.srcObject = null;
     };
-  }, [media.stream]);
+  }, [media.stream, media.videoTrack]);
   return (
     <div
       className={cn(
@@ -44,7 +47,7 @@ export function DevicePreview({
         aria-hidden={!ready || !media.isCameraEnabled}
         className="absolute inset-0 h-full w-full object-cover [transform:scaleX(-1)]"
       />
-      {(!ready || !media.isCameraEnabled) && (
+      {(!ready || !media.isCameraEnabled || requesting) && (
         <div className="absolute inset-0 grid place-items-center bg-[#20232a] p-5 text-center text-white">
           <div>
             <span className="mx-auto grid size-14 place-items-center rounded-2xl border border-white/15 bg-white/5">
@@ -57,11 +60,11 @@ export function DevicePreview({
             <p className="mt-4 text-sm">
               {requesting
                 ? "Allow access in your browser"
-                : ready
+                : ready || !showStartButton
                   ? "Camera is off"
                   : "Let’s check your devices"}
             </p>
-            {!ready && !requesting && (
+            {showStartButton && !ready && !requesting && (
               <Button
                 className="mt-5 h-10 bg-white px-4 text-slate-950 hover:bg-slate-200"
                 onClick={() => void media.startMedia()}

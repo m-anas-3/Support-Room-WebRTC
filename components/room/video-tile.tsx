@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { Mic, MicOff, UserRound, VideoOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -35,6 +41,7 @@ export function VideoTile({
   className?: string;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
   const [playbackBlocked, setPlaybackBlocked] = useState(false);
   const [remoteVideoFlowing, setRemoteVideoFlowing] = useState(true);
   const liveVideoTrack = stream
@@ -43,11 +50,37 @@ export function VideoTile({
   const hasVideo =
     Boolean(liveVideoTrack) && cameraEnabled && (local || remoteVideoFlowing);
 
+  const playMedia = useCallback(async () => {
+    // A negotiated video track may never have produced a frame. Keep remote
+    // audio in an audio-only element so it can play independently of video.
+    const videoPlayback = videoRef.current?.play();
+    if (local) await videoPlayback;
+    else {
+      void videoPlayback?.catch(() => undefined);
+      const audio = audioRef.current;
+      if ((audio?.srcObject as MediaStream | null)?.getAudioTracks().length)
+        await audio?.play();
+    }
+  }, [local]);
+
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
     let observedTrack: MediaStreamTrack | null = null;
+    const audio = audioRef.current;
+    const audioStream = new MediaStream();
+    if (audio && !local) audio.srcObject = audioStream;
     const updateFlow = () => {
+      if (!local) {
+        const tracks =
+          stream
+            ?.getAudioTracks()
+            .filter((track) => track.readyState === "live") ?? [];
+        for (const track of audioStream.getTracks())
+          if (!tracks.includes(track)) audioStream.removeTrack(track);
+        for (const track of tracks)
+          if (!audioStream.getTrackById(track.id)) audioStream.addTrack(track);
+      }
       const nextTrack =
         stream?.getVideoTracks().find((track) => track.readyState === "live") ??
         null;
@@ -64,18 +97,12 @@ export function VideoTile({
         nextTrack && !nextTrack.muted && nextTrack.readyState === "live",
       );
       setRemoteVideoFlowing(flowing);
-      if (flowing && stream)
-        void video
-          .play()
+      if (stream)
+        void playMedia()
           .then(() => setPlaybackBlocked(false))
           .catch(() => setPlaybackBlocked(true));
     };
     video.srcObject = stream;
-    if (stream)
-      void video
-        .play()
-        .then(() => setPlaybackBlocked(false))
-        .catch(() => setPlaybackBlocked(true));
     stream?.addEventListener("addtrack", updateFlow);
     stream?.addEventListener("removetrack", updateFlow);
     const initialFlowFrame = requestAnimationFrame(updateFlow);
@@ -87,8 +114,9 @@ export function VideoTile({
       observedTrack?.removeEventListener("unmute", updateFlow);
       observedTrack?.removeEventListener("ended", updateFlow);
       video.srcObject = null;
+      if (audio) audio.srcObject = null;
     };
-  }, [stream]);
+  }, [local, playMedia, stream]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -96,8 +124,7 @@ export function VideoTile({
     let active = true;
     // A camera restart or a remote unmute may resume an existing stream without
     // changing its identity or firing another track event.
-    void video
-      .play()
+    void playMedia()
       .then(() => {
         if (active) setPlaybackBlocked(false);
       })
@@ -107,12 +134,12 @@ export function VideoTile({
     return () => {
       active = false;
     };
-  }, [cameraEnabled, microphoneEnabled, stream]);
+  }, [cameraEnabled, microphoneEnabled, playMedia, stream]);
 
   useEffect(() => {
-    const video = videoRef.current;
-    if (!video || local || speakerId === undefined) return;
-    if (typeof video.setSinkId !== "function") {
+    const audio = audioRef.current;
+    if (!audio || local || speakerId === undefined) return;
+    if (typeof audio.setSinkId !== "function") {
       if (speakerId)
         onSpeakerError?.(
           "Use your device’s sound controls to choose an output in this browser.",
@@ -120,7 +147,7 @@ export function VideoTile({
       return;
     }
     let active = true;
-    void video
+    void audio
       .setSinkId(speakerId)
       .then(() => {
         if (active) onSpeakerError?.(null);
@@ -160,16 +187,16 @@ export function VideoTile({
       )}
       data-testid={testId}
     >
-      {/* Keep the media element playing under the opaque camera-off placeholder.
-          Hiding it can suspend playback, including its audio, in browsers. */}
+      {/* Keep video mounted while tracks change; remote audio plays separately. */}
       <video
         ref={videoRef}
         autoPlay
-        muted={local}
+        muted
         playsInline
         aria-hidden={!hasVideo}
         className={`absolute inset-0 h-full w-full ${fit === "contain" ? "object-contain" : "object-cover"} ${local ? "[transform:scaleX(-1)]" : ""}`}
       />
+      {!local && <audio ref={audioRef} autoPlay aria-hidden="true" />}
       {!hasVideo && (
         <div
           className={cn(
@@ -214,8 +241,7 @@ export function VideoTile({
           size="sm"
           className="absolute top-4 left-1/2 -translate-x-1/2 bg-white text-slate-950 hover:bg-slate-200"
           onClick={() =>
-            void videoRef.current
-              ?.play()
+            void playMedia()
               .then(() => setPlaybackBlocked(false))
               .catch(() => setPlaybackBlocked(true))
           }

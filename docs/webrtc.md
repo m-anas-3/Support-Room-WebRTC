@@ -7,7 +7,7 @@ SupportRoom now connects two browser participants with native WebRTC audio and v
 - `hooks/use-peer-connection.ts` starts and disposes a connection while the participant has local media, an admitted room, and an open signaling channel.
 - `lib/webrtc/peer-connection.ts` owns the native connection, SDP operations, ICE queues, remote stream, and connection-state subscriptions. React reads its event-driven snapshots with `useSyncExternalStore`.
 - `lib/webrtc/config.ts` accepts short-lived ICE configuration from the authenticated signaling connection. Its public STUN variables remain as a local-development fallback when the signaling server has no TURN configuration.
-- `components/room/video-tile.tsx` attaches a stream to `video.srcObject`. Local video is muted and mirrored; remote video plays the other participant's audio. A playback button handles browsers that block autoplay.
+- `components/room/video-tile.tsx` attaches a stream to `video.srcObject`. Video is muted and local video is mirrored; a separate audio-only element plays the other participant’s voice independently, even when the negotiated camera has never sent a frame. Speaker selection applies to that audio element. A playback button handles browsers that block autoplay.
 - `components/room/call-controls.tsx` controls actual tracks and provides explicit leave/end actions.
 - `hooks/use-local-media.ts` manages camera and microphone tracks independently, releases camera capture when video is turned off, and attempts a same-kind fallback when hardware disappears.
 - `hooks/use-outgoing-media.ts` synchronizes replacement tracks and explicit camera/microphone state without rebuilding the peer connection.
@@ -28,6 +28,10 @@ The display stream is separate from the camera/microphone stream. This keeps own
 The sharer's self tile continues to show their camera with a **Presenting** label. SupportRoom does not render the captured display back inside the tab being captured, because doing so creates the recursive screen-within-screen mirror when the user shares the current tab, browser window, or monitor.
 
 ## Device lifecycle and recovery
+
+Host rooms and the customer preview use the bottom microphone and camera controls directly. Each control requests only its own device; neither depends on a separate Start camera/preview action. Existing granted browser permissions start each device independently, respecting the agent’s saved camera/microphone defaults. Permission queries are best-effort: browsers that cannot query camera/microphone permissions leave the devices off until the user clicks a control. First-time and denied permissions also remain off; the click lets the browser handle access or shows a useful blocked-access message.
+
+An empty, stable local `MediaStream` allows admission and negotiation with both devices off. Audio/video transceivers are reserved as usual, so enabling either device later uses track replacement on the existing connection. Permission checks are cancelled on cleanup and ignored after a newer user action, preventing a late result from overriding a toggle or reopening devices after leaving. The standalone Device check page keeps its explicit preview action.
 
 - Turning the camera off removes its track from the local stream, calls `RTCRtpSender.replaceTrack(null)`, and stops the track so the browser can release the camera hardware.
 - Turning the camera back on requests a new video-only track and attaches it to the existing sender with `replaceTrack()`. The peer connection, microphone, and selected ICE route remain in place.
@@ -106,6 +110,11 @@ The tests use a separate `.next-e2e` directory and local test ports. Headless Ch
 Toggle regression tests cover camera-off admission (including both cameras off), repeated camera and microphone toggles in both directions, and unmuting an ended microphone track. A generated audio tone verifies received audio energy drops to silence while muted and increases after unmute; RTP bytes alone can include silent packets. Tests also verify the existing peer connection is retained.
 
 ## Authoritative resources
+
+- [Google Meet: preview and in-call audio/video controls](https://support.google.com/meet/answer/10409699?hl=en)
+- [web.dev: Google Meet permission design](https://web.dev/case-studies/google-meet-permissions-best-practices)
+- [MDN: querying browser permissions and unsupported permission names](https://developer.mozilla.org/en-US/docs/Web/API/Permissions/query)
+- [MDN: getUserMedia permission and per-device constraints](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia)
 
 - [W3C: RTP media API and transceiver association](https://w3c.github.io/webrtc-pc/#rtp-media-api)
 - [MDN: signaling and video calling](https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API/Signaling_and_video_calling)

@@ -4,9 +4,7 @@ import { useState } from "react";
 import {
   Check,
   Clock3,
-  Mic,
   ShieldCheck,
-  Video,
   ArrowRight,
   CircleAlert,
 } from "lucide-react";
@@ -24,7 +22,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
 import { Progress } from "@/components/ui/progress";
 import { useLocalMedia } from "@/hooks/use-local-media";
 import { useOutgoingMedia } from "@/hooks/use-outgoing-media";
@@ -34,9 +31,10 @@ import { useScreenWakeLock } from "@/hooks/use-screen-wake-lock";
 import { useSignaling } from "@/hooks/use-signaling";
 import { CustomerCall } from "@/components/room/customer-call";
 import { CallDeviceSettings } from "@/components/room/call-device-settings";
+import { MediaControls } from "@/components/room/call-controls";
 
 export function CustomerJoin({ roomId }: { roomId: string }) {
-  const media = useLocalMedia();
+  const media = useLocalMedia({ autoStartGranted: true });
   const [left, setLeft] = useState(false);
   const [waiting, setWaiting] = useState(false);
   const [name, setName] = useState("");
@@ -143,6 +141,7 @@ export function CustomerJoin({ roomId }: { roomId: string }) {
     peer.close();
     signaling.leave();
     media.stopMedia();
+    media.prepareForCall();
     setWaiting(false);
     setLeft(false);
   }
@@ -225,31 +224,19 @@ export function CustomerJoin({ roomId }: { roomId: string }) {
                   A quick check, then you’re ready to connect.
                 </p>
               </div>
-              <DevicePreview media={media} />
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                <DeviceToggle
-                  icon={Video}
-                  label="Camera"
-                  detail={media.isCameraEnabled ? "Camera on" : "Camera off"}
-                  checked={media.isCameraEnabled}
-                  disabled={
-                    !isReady ||
-                    ["requesting", "recovering"].includes(media.cameraStatus)
-                  }
-                  onCheckedChange={media.toggleCamera}
-                />
-                <DeviceToggle
-                  icon={Mic}
-                  label="Microphone"
-                  detail={media.isMicrophoneEnabled ? "Microphone on" : "Muted"}
-                  checked={media.isMicrophoneEnabled}
-                  disabled={
-                    !isReady ||
-                    ["requesting", "recovering"].includes(
-                      media.microphoneStatus,
-                    )
-                  }
-                  onCheckedChange={media.toggleMicrophone}
+              <DevicePreview media={media} showStartButton={false} />
+              <div className="dark mt-4 flex justify-center gap-3 rounded-2xl bg-card p-2">
+                <MediaControls
+                  cameraEnabled={media.isCameraEnabled}
+                  microphoneEnabled={media.isMicrophoneEnabled}
+                  cameraChanging={["requesting", "recovering"].includes(
+                    media.cameraStatus,
+                  )}
+                  microphoneChanging={["requesting", "recovering"].includes(
+                    media.microphoneStatus,
+                  )}
+                  onToggleCamera={media.toggleCamera}
+                  onToggleMicrophone={media.toggleMicrophone}
                 />
               </div>
               {isReady && (
@@ -273,13 +260,6 @@ export function CustomerJoin({ roomId }: { roomId: string }) {
                       </AccordionTrigger>
                       <AccordionContent className="pb-5">
                         <CallDeviceSettings media={media} />
-                        <Button
-                          variant="ghost"
-                          className="mt-4"
-                          onClick={media.stopMedia}
-                        >
-                          Stop preview
-                        </Button>
                       </AccordionContent>
                     </AccordionItem>
                   </Accordion>
@@ -344,20 +324,15 @@ export function CustomerJoin({ roomId }: { roomId: string }) {
                   </Field>
                   <Button
                     className="mt-5 h-11 w-full"
-                    disabled={!name.trim() || !isReady}
+                    disabled={!name.trim()}
                     onClick={() => setWaiting(true)}
                   >
                     Ask to join <ArrowRight />
                   </Button>
-                  {!isReady && (
-                    <p className="mt-3 text-center text-xs text-muted-foreground">
-                      Start the device preview before asking to join.
-                    </p>
-                  )}
                   <p className="mt-6 border-t pt-5 text-xs leading-5 text-muted-foreground">
                     Your preview stays on this device. Audio and video are
-                    shared only after your agent admits you. Your camera can
-                    stay off.
+                    shared only after your agent admits you. Your camera can and
+                    microphone can stay off.
                   </p>
                 </>
               )}
@@ -366,37 +341,5 @@ export function CustomerJoin({ roomId }: { roomId: string }) {
         </div>
       )}
     </main>
-  );
-}
-
-function DeviceToggle({
-  icon: Icon,
-  label,
-  detail,
-  checked,
-  disabled,
-  onCheckedChange,
-}: {
-  icon: typeof Video;
-  label: string;
-  detail: string;
-  checked: boolean;
-  disabled: boolean;
-  onCheckedChange: () => void;
-}) {
-  return (
-    <div className="flex items-center gap-3 rounded-xl border bg-white p-4">
-      <Icon className="size-4 text-muted-foreground" />
-      <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium">{label}</p>
-        <p className="text-xs text-muted-foreground">{detail}</p>
-      </div>
-      <Switch
-        checked={checked}
-        disabled={disabled}
-        onCheckedChange={onCheckedChange}
-        aria-label={`Toggle ${label}`}
-      />
-    </div>
   );
 }

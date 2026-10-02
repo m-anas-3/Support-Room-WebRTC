@@ -4,7 +4,6 @@ import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Activity,
-  Camera,
   Check,
   Copy,
   Maximize2,
@@ -49,7 +48,10 @@ export function SupportCall({ roomId }: { roomId: string }) {
   const router = useRouter();
   const agent = useAgentIdentity();
   const [panel, setPanel] = useState<Panel>(null);
-  const media = useLocalMedia(agent.callDefaults);
+  const media = useLocalMedia({
+    ...agent.callDefaults,
+    autoStartGranted: true,
+  });
   const signaling = useSignaling({
     roomId,
     role: "host",
@@ -282,7 +284,6 @@ export function SupportCall({ roomId }: { roomId: string }) {
         <CallControls
           microphoneEnabled={media.isMicrophoneEnabled}
           cameraEnabled={media.isCameraEnabled}
-          mediaReady={mediaReady}
           cameraChanging={["requesting", "recovering"].includes(
             media.cameraStatus,
           )}
@@ -339,7 +340,6 @@ export function SupportCall({ roomId }: { roomId: string }) {
             connected={signaling.status === "connected"}
             waiting={waitingCustomer}
             error={signaling.error}
-            canAdmit={mediaReady}
             onCopy={copyInvite}
             onDecline={() => signaling.send({ type: "decline" })}
             onAdmit={() => signaling.send({ type: "admit" })}
@@ -355,22 +355,6 @@ export function SupportCall({ roomId }: { roomId: string }) {
             cameraEnabled={media.isCameraEnabled}
             microphoneEnabled={media.isMicrophoneEnabled}
             testId="local-video"
-            action={
-              !mediaReady ? (
-                <Button
-                  className="h-10"
-                  disabled={media.status === "requesting"}
-                  onClick={() => void media.startMedia()}
-                >
-                  <Camera />
-                  {media.status === "requesting"
-                    ? "Starting…"
-                    : agent.callDefaults.cameraEnabled
-                      ? "Start camera"
-                      : "Prepare devices"}
-                </Button>
-              ) : undefined
-            }
           />
           {screenShare.isSharing && (
             <SharingState onStop={() => void screenShare.stopScreenShare()} />
@@ -420,7 +404,6 @@ function WaitingTile({
   connected,
   waiting,
   error,
-  canAdmit,
   onAdmit,
   onDecline,
   onCopy,
@@ -429,7 +412,6 @@ function WaitingTile({
   connected: boolean;
   waiting?: boolean;
   error?: string | null;
-  canAdmit: boolean;
   onAdmit: () => void;
   onDecline: () => void;
   onCopy: () => void;
@@ -450,9 +432,7 @@ function WaitingTile({
         <p className="mx-auto mt-2 max-w-xs text-sm leading-6 text-muted-foreground">
           {error ??
             (waiting
-              ? canAdmit
-                ? "Your devices are ready. Admit your customer when you’re ready to talk."
-                : "Prepare your devices before admitting your customer. Your camera can stay off."
+              ? "Admit your customer when you’re ready. Use the controls below to turn your camera and microphone on or off."
               : "Copy your invitation and send it to your customer. You choose when they join.")}
         </p>
         {waiting ? (
@@ -460,7 +440,7 @@ function WaitingTile({
             <Button className="h-10" variant="secondary" onClick={onDecline}>
               Decline
             </Button>
-            <Button className="h-10" disabled={!canAdmit} onClick={onAdmit}>
+            <Button className="h-10" disabled={!connected} onClick={onAdmit}>
               <Check />
               Admit
             </Button>
